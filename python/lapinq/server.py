@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -25,7 +26,7 @@ from lapinq.worker import run_worker_inline
 
 logger = logging.getLogger("lapinq.server")
 
-MAX_PAYLOAD_SIZE = 1024 * 100
+MAX_PAYLOAD_SIZE = int(os.environ.get("LAPINQ_MAX_PAYLOAD_SIZE", str(1024 * 100)))
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -142,10 +143,11 @@ def create_app(
                 await t
         await storage.close()
 
+    cors_origins = os.environ.get("LAPINQ_CORS_ORIGINS", "*").split(",")
     middleware: list[Middleware] = [
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=cors_origins,
             allow_methods=["*"],
             allow_headers=["*"],
         ),

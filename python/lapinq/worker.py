@@ -13,7 +13,7 @@ from lapinq.storage import Storage
 
 logger = logging.getLogger("lapinq.worker")
 
-HEARTBEAT_INTERVAL = 15.0
+HEARTBEAT_INTERVAL = float(os.environ.get("LAPINQ_HEARTBEAT_INTERVAL", "15.0"))
 
 
 async def run_worker(

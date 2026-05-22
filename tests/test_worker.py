@@ -66,7 +66,10 @@ async def test_handle_signal_sets_event():
     assert event.is_set()
 
 
-async def test_heartbeat_loop_updates_on_each_iteration():
+async def test_heartbeat_loop_updates_on_each_iteration(monkeypatch):
+    import lapinq.worker as wmod
+
+    monkeypatch.setattr(wmod, "HEARTBEAT_INTERVAL", 0.05)
     from lapinq.worker import _heartbeat_loop
 
     storage = await Storage.create(DATABASE_URL)
@@ -92,7 +95,10 @@ async def test_heartbeat_loop_updates_on_each_iteration():
         await storage.close()
 
 
-async def test_heartbeat_loop_does_not_error_for_unknown_worker():
+async def test_heartbeat_loop_does_not_error_for_unknown_worker(monkeypatch):
+    import lapinq.worker as wmod
+
+    monkeypatch.setattr(wmod, "HEARTBEAT_INTERVAL", 0.05)
     from lapinq.worker import _heartbeat_loop
 
     shutdown_event = asyncio.Event()

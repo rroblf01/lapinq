@@ -1,3 +1,4 @@
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use log::error;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -51,20 +52,18 @@ const SCHEMA_SQL: &str = "
         WHERE status = 'pending';
 ";
 
-pub async fn connect_db(database_url: &str) -> tokio_postgres::Client {
-    use tokio_postgres::NoTls;
-    let (client, connection) = tokio_postgres::connect(database_url, NoTls)
-        .await
-        .expect("Failed to connect to PostgreSQL");
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            error!("PostgreSQL connection error: {}", e);
-        }
+pub async fn connect_db(database_url: &str) -> Pool {
+    let mut cfg = Config::new();
+    cfg.url = Some(database_url.to_string());
+    cfg.manager = Some(ManagerConfig {
+        recycling_method: RecyclingMethod::Fast,
     });
-    client
+    cfg.create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)
+        .expect("Failed to create PostgreSQL connection pool")
 }
 
-pub async fn ensure_schema(client: &tokio_postgres::Client) {
+pub async fn ensure_schema(pool: &Pool) {
+    let client = pool.get().await.expect("Failed to get connection");
     client
         .batch_execute(SCHEMA_SQL)
         .await
@@ -72,9 +71,10 @@ pub async fn ensure_schema(client: &tokio_postgres::Client) {
 }
 
 pub async fn claim_task(
-    client: &tokio_postgres::Client,
+    pool: &Pool,
     worker_id: &str,
-) -> Result<Option<Task>, tokio_postgres::Error> {
+) -> Result<Option<Task>, Box<dyn std::error::Error>> {
+    let client = pool.get().await?;
     let row = client
         .query_opt(
             "
@@ -115,10 +115,11 @@ pub async fn claim_task(
 }
 
 pub async fn complete_task_in_db(
-    client: &tokio_postgres::Client,
+    pool: &Pool,
     task_id: Uuid,
     result: &str,
-) -> Result<(), tokio_postgres::Error> {
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = pool.get().await?;
     client
         .execute(
             "UPDATE lapinq_tasks SET status = 'completed', result = $2, completed_at = now() WHERE id = $1",
@@ -129,12 +130,13 @@ pub async fn complete_task_in_db(
 }
 
 pub async fn fail_task_in_db(
-    client: &tokio_postgres::Client,
+    pool: &Pool,
     task_id: Uuid,
     error: &str,
     attempts: i32,
     max_retries: i32,
 ) -> Result<(), String> {
+    let client = pool.get().await.map_err(|e| e.to_string())?;
     let new_attempts = attempts + 1;
     if new_attempts < max_retries {
         let backoff = retry_backoff_seconds(new_attempts);
@@ -155,6 +157,20 @@ pub async fn fail_task_in_db(
             .await
             .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+pub async fn heartbeat_worker(
+    pool: &Pool,
+    worker_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = pool.get().await?;
+    client
+        .execute(
+            "UPDATE lapinq_tasks SET last_heartbeat = now() WHERE worker_id = $1 AND status = 'running'",
+            &[&worker_id],
+        )
+        .await?;
     Ok(())
 }
 

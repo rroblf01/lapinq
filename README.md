@@ -219,12 +219,16 @@ Key indexes:
 ## Environment Variables
 
 | Variable | Default | Used by | Purpose |
-|---|---|---|---|
+|---|---|---|---|---|
 | `DATABASE_URL` | `postgresql://localhost:5432/lapinq` | server, worker, execute | PostgreSQL connection string |
-| `LAGOMORPH_API_KEY` | *(none — auth disabled)* | server | Enables `X-API-Key` auth middleware |
-| `LAGOMORPH_RATE_LIMIT` | `0` (disabled) | server | Max requests per minute per IP |
-| `LAGOMORPH_JSON_LOG` | `0` (text logging) | server, worker, execute | Set to `1` for structured JSON |
-| `LAGOMORPH_LOG_LEVEL` | `INFO` | server, worker, execute | Log level override |
+| `LAPINQ_API_KEY` | *(none — auth disabled)* | server | Enables `X-API-Key` auth middleware |
+| `LAPINQ_RATE_LIMIT` | `0` (disabled) | server | Max requests per minute per IP |
+| `LAPINQ_MAX_PAYLOAD_SIZE` | `102400` (100KB) | server | Max JSON payload size for enqueue |
+| `LAPINQ_POOL_SIZE` | `10` | server, worker | PostgreSQL connection pool size |
+| `LAPINQ_HEARTBEAT_INTERVAL` | `15.0` | worker | Seconds between worker heartbeats |
+| `LAPINQ_CORS_ORIGINS` | `*` | server | Comma-separated allowed CORS origins |
+| `LAPINQ_JSON_LOG` | `0` (text logging) | server, worker, execute | Set to `1` for structured JSON |
+| `LAPINQ_LOG_LEVEL` | `INFO` | server, worker, execute | Log level override |
 
 ## Task Lifecycle
 

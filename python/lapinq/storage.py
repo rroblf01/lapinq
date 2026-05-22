@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -74,7 +75,9 @@ class Storage:
         self._listener_cb: Any = None
 
     @classmethod
-    async def create(cls, database_url: str, max_size: int = 10, max_retries: int = 5) -> Storage:
+    async def create(cls, database_url: str, max_size: int | None = None, max_retries: int = 5) -> Storage:
+        if max_size is None:
+            max_size = int(os.environ.get("LAPINQ_POOL_SIZE", "10"))
         last_error: Exception | None = None
         for attempt in range(max_retries):
             try:

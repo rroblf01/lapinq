@@ -1,4 +1,5 @@
 use clap::Parser;
+use deadpool_postgres::Pool;
 use log::{error, info, warn};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -6,7 +7,10 @@ use tokio::process::Command;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
-use _worker::{claim_task, complete_task_in_db, connect_db, ensure_schema, fail_task_in_db, Task};
+use _worker::{
+    claim_task, complete_task_in_db, connect_db, ensure_schema, fail_task_in_db,
+    heartbeat_worker, Task,
+};
 
 fn install_signal_handlers() -> tokio::sync::oneshot::Receiver<()> {
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -56,13 +60,24 @@ async fn main() {
         worker_id, args.concurrency, args.poll_interval_secs, args.task_timeout_secs,
     );
 
-    let client = connect_db(&args.database_url).await;
-    ensure_schema(&client).await;
+    let pool = connect_db(&args.database_url).await;
+    ensure_schema(&pool).await;
 
     let semaphore = Arc::new(Semaphore::new(args.concurrency));
-    let client = Arc::new(client);
     let shutdown_rx = install_signal_handlers();
     tokio::pin!(shutdown_rx);
+
+    let hb_pool = pool.clone();
+    let hb_worker_id = worker_id.clone();
+    tokio::spawn(async move {
+        let mut hb_interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
+        loop {
+            hb_interval.tick().await;
+            if let Err(e) = heartbeat_worker(&hb_pool, &hb_worker_id).await {
+                error!("Heartbeat error: {}", e);
+            }
+        }
+    });
 
     loop {
         tokio::select! {
@@ -70,7 +85,7 @@ async fn main() {
                 info!("Worker {} shutting down, draining active tasks...", worker_id);
                 break;
             }
-            result = claim_task(&client, &worker_id) => {
+            result = claim_task(&pool, &worker_id) => {
                 let task = match result {
                     Ok(Some(t)) => t,
                     Ok(None) => {
@@ -87,14 +102,14 @@ async fn main() {
                     }
                 };
 
+                let pool_clone = pool.clone();
                 let sem = semaphore.clone();
-                let cl = client.clone();
                 let timeout = args.task_timeout_secs;
 
                 tokio::spawn(async move {
                     let _permit = sem.acquire().await.unwrap();
                     info!("Executing task {}", task.id);
-                    if let Err(e) = execute_task(&cl, &task, timeout).await {
+                    if let Err(e) = execute_task(&pool_clone, &task, timeout).await {
                         warn!("Task {} failed: {}", task.id, e);
                     }
                 });
@@ -106,7 +121,7 @@ async fn main() {
 }
 
 async fn execute_task(
-    client: &tokio_postgres::Client,
+    pool: &Pool,
     task: &Task,
     timeout_secs: u64,
 ) -> Result<(), String> {
@@ -119,7 +134,7 @@ async fn execute_task(
     match result {
         Ok(Ok((stdout, _))) => {
             info!("Task {} completed successfully", task.id);
-            complete_task_in_db(client, task.id, &stdout)
+            complete_task_in_db(pool, task.id, &stdout)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(())
@@ -131,14 +146,14 @@ async fn execute_task(
                 stderr.clone()
             };
             warn!("Task {} failed: {}", task.id, msg);
-            fail_task_in_db(client, task.id, &msg, attempts, max_retries)
+            fail_task_in_db(pool, task.id, &msg, attempts, max_retries)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(())
         }
         Err(_) => {
             warn!("Task {} timed out after {}s", task.id, timeout_secs);
-            fail_task_in_db(client, task.id, "timed out", task.attempts, task.max_retries)
+            fail_task_in_db(pool, task.id, "timed out", task.attempts, task.max_retries)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(())

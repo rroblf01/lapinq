@@ -32,7 +32,7 @@ def test_json_formatter_with_exc():
 
 
 def test_configure_logging_json():
-    os.environ["LAGOMORPH_JSON_LOG"] = "1"
+    os.environ["LAPINQ_JSON_LOG"] = "1"
     try:
         configure_logging()
         logger = logging.getLogger("test_json")
@@ -40,11 +40,11 @@ def test_configure_logging_json():
         fmt = handler.formatter
         assert isinstance(fmt, JSONFormatter)
     finally:
-        os.environ.pop("LAGOMORPH_JSON_LOG", None)
+        os.environ.pop("LAPINQ_JSON_LOG", None)
 
 
 def test_configure_logging_text():
-    os.environ.pop("LAGOMORPH_JSON_LOG", None)
+    os.environ.pop("LAPINQ_JSON_LOG", None)
     configure_logging()
     logger = logging.getLogger("test_text")
     handler = logger.handlers[0] if logger.handlers else logging.getLogger().handlers[0]

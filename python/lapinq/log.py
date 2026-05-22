@@ -27,8 +27,8 @@ class JSONFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
-    level = os.environ.get("LAGOMORPH_LOG_LEVEL", "INFO").upper()
-    if os.environ.get("LAGOMORPH_JSON_LOG", "").lower() in ("1", "true", "yes"):
+    level = os.environ.get("LAPINQ_LOG_LEVEL", "INFO").upper()
+    if os.environ.get("LAPINQ_JSON_LOG", "").lower() in ("1", "true", "yes"):
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(JSONFormatter())
         logging.basicConfig(level=level, handlers=[handler], force=True)

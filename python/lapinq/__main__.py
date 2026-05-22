@@ -49,8 +49,8 @@ def _run_server(args: argparse.Namespace) -> None:
     from lapinq.server import create_app
 
     database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lapinq")
-    api_key = os.environ.get("LAGOMORPH_API_KEY")
-    rate_limit_str = os.environ.get("LAGOMORPH_RATE_LIMIT", "0")
+    api_key = os.environ.get("LAPINQ_API_KEY")
+    rate_limit_str = os.environ.get("LAPINQ_RATE_LIMIT", "0")
     rate_limit = int(rate_limit_str) if rate_limit_str.isdigit() else 0
     app = create_app(
         database_url=database_url,
