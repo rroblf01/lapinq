@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -13,9 +14,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from lagomorph.dashboard import dashboard_page, queues_html, tasks_html
+from lagomorph.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
 from lagomorph.storage import Storage
 
 MAX_PAYLOAD_SIZE = 1024 * 100
@@ -74,6 +76,8 @@ def create_app(
     rate_limit: int = 0,
 ) -> Starlette:
     routes = [
+        Route("/", dashboard, methods=["GET"]),
+        WebSocketRoute("/ws", ws_endpoint),
         Route("/api/enqueue", enqueue, methods=["POST"]),
         Route("/api/queues", queue_stats, methods=["GET"]),
         Route("/api/tasks/html", tasks_html_endpoint, methods=["GET"]),
@@ -83,7 +87,6 @@ def create_app(
         Route("/api/tasks/{task_id:str}", get_task, methods=["GET"]),
         Route("/api/tasks/{task_id:str}", cancel_task, methods=["DELETE"]),
         Route("/api/tasks/{task_id:str}/requeue", requeue_task, methods=["POST"]),
-        Route("/dashboard", dashboard, methods=["GET"]),
         Route("/health", health, methods=["GET"]),
         Route("/metrics", metrics, methods=["GET"]),
     ]
@@ -230,7 +233,40 @@ async def tasks_html_endpoint(request: Request) -> HTMLResponse:
 
 
 async def dashboard(request: Request) -> HTMLResponse:
-    return dashboard_page
+    storage: Storage = request.app.state.storage
+    stats = await storage.queue_stats()
+    return dashboard_page(stats)
+
+
+async def ws_endpoint(websocket: WebSocket) -> None:
+    await websocket.accept()
+    storage: Storage = websocket.app.state.storage
+    queue_filter: str | None = None
+
+    async def _send() -> None:
+        try:
+            if queue_filter:
+                stats = [s for s in await storage.queue_stats() if s["queue_name"] == queue_filter]
+                tasks = await storage.list_tasks(queue_name=queue_filter, limit=20)
+            else:
+                stats = await storage.queue_stats()
+                tasks = await storage.list_tasks(limit=20)
+            cards = _queue_cards_html(stats)
+            table = _tasks_table_html([_serialize_task(t) for t in tasks])
+            await websocket.send_json({"cards": cards, "table": table})
+        except Exception:
+            pass
+
+    try:
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=2)
+                queue_filter = data.get("queue") or None
+            except asyncio.TimeoutError:
+                pass
+            await _send()
+    except WebSocketDisconnect:
+        pass
 
 
 async def health(request: Request) -> JSONResponse:

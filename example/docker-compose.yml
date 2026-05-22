@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lagomorph
+      POSTGRES_PASSWORD: lagomorph
+      POSTGRES_DB: lagomorph
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lagomorph"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  lagomorph-server:
+    build:
+      context: ..
+      dockerfile: example/Dockerfile
+    command: python -m lagomorph server --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://lagomorph:lagomorph@postgres:5432/lagomorph
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: ..
+      dockerfile: example/Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://lagomorph:lagomorph@postgres:5432/lagomorph
+      LAGOMORPH_SERVER_URL: http://lagomorph-server:8001
+    volumes:
+      - ./app:/workspace/example/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lagomorph-server:
+        condition: service_started
+
+  worker:
+    build:
+      context: ..
+      dockerfile: example/Dockerfile
+    command: python -m lagomorph worker --poll-interval 0.5
+    environment:
+      DATABASE_URL: postgresql://lagomorph:lagomorph@postgres:5432/lagomorph
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lagomorph-server:
+        condition: service_started

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from typing import Any
 
 import asyncpg
+
+logger = logging.getLogger("lagomorph.storage")
 
 RETRY_BACKOFF_SECONDS = (10, 30, 60, 300, 600)
 
@@ -51,11 +55,24 @@ class Storage:
         self.pool = pool
 
     @classmethod
-    async def create(cls, database_url: str, max_size: int = 10) -> Storage:
-        pool = await asyncpg.create_pool(database_url, min_size=1, max_size=max_size)
-        async with pool.acquire() as conn:
-            await conn.execute(SQL_SCHEMA)
-        return cls(pool)
+    async def create(cls, database_url: str, max_size: int = 10, max_retries: int = 5) -> Storage:
+        last_error: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                pool = await asyncpg.create_pool(database_url, min_size=1, max_size=max_size)
+                async with pool.acquire() as conn:
+                    await conn.execute(SQL_SCHEMA)
+                return cls(pool)
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    delay = (attempt + 1) * 2
+                    logger.warning(
+                        "DB connection failed (attempt %d/%d): %s — retrying in %ds",
+                        attempt + 1, max_retries, e, delay,
+                    )
+                    await asyncio.sleep(delay)
+        raise RuntimeError(f"Could not connect to database after {max_retries} attempts") from last_error
 
     def _parse_row(self, row: asyncpg.Record | None) -> dict[str, Any] | None:
         if row is None:

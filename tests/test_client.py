@@ -35,6 +35,15 @@ def test_task_decorator_uses_function_name(task_queue):
     assert "auto_named" in task_queue._registry
 
 
+def test_task_decorator_no_parens(task_queue):
+    @task_queue.task
+    def no_parens() -> int:
+        return 42
+
+    assert "no_parens" in task_queue._registry
+    assert no_parens() == 42
+
+
 def test_task_decorator_custom_queue(task_queue):
     @task_queue.task(name="custom_q_task", queue_name="other_queue")
     def custom_q() -> None:
@@ -43,7 +52,16 @@ def test_task_decorator_custom_queue(task_queue):
     assert "custom_q_task" in task_queue._registry
 
 
-def test_wrapper_sends_http_request(task_queue):
+def test_original_function_still_callable(task_queue):
+    @task_queue.task(name="add")
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    assert add(2, 3) == 5
+    assert add(a=10, b=20) == 30
+
+
+def test_queue_sends_http_request(task_queue):
     with mock.patch.object(task_queue._client, "post") as mock_post:
         mock_post.return_value = httpx.Response(201, json={"task_id": "abc-123"})
 
@@ -51,7 +69,7 @@ def test_wrapper_sends_http_request(task_queue):
         def send_me(a: int, b: str = "default") -> None:
             pass
 
-        resp = send_me(42, b="hello")
+        resp = send_me.queue(42, b="hello")
 
         mock_post.assert_called_once()
         call_kwargs = mock_post.call_args
@@ -64,7 +82,7 @@ def test_wrapper_sends_http_request(task_queue):
         assert resp.status_code == 201
 
 
-def test_wrapper_default_queue(task_queue):
+def test_queue_default_queue():
     tq2 = TaskQueue(server_url="http://other:8001", queue_name="other_q")
 
     with mock.patch.object(tq2._client, "post") as mock_post:
@@ -74,7 +92,7 @@ def test_wrapper_default_queue(task_queue):
         def use_default_q() -> None:
             pass
 
-        use_default_q()
+        use_default_q.queue()
 
         payload = mock_post.call_args[1]["json"]
         assert payload["queue_name"] == "other_q"
@@ -100,10 +118,10 @@ def test_multiple_tasks_different_queues():
         def task_b() -> None:
             pass
 
-        task_a()
+        task_a.queue()
         assert mock_post.call_args[1]["json"]["queue_name"] == "queue_a"
 
-        task_b()
+        task_b.queue()
         assert mock_post.call_args[1]["json"]["queue_name"] == "queue_b"
 
 
@@ -116,7 +134,7 @@ def test_task_decorator_with_scheduled_at():
         def scheduled() -> None:
             pass
 
-        scheduled()
+        scheduled.queue()
         payload = mock_post.call_args[1]["json"]
         assert payload["scheduled_at"] == "2099-01-01T00:00:00"
         assert payload["max_retries"] == 5
@@ -131,13 +149,34 @@ async def test_async_task_queue():
             mock_post.return_value = httpx.Response(201, json={"task_id": "async-42"})
 
             @atq.task(name="async_task")
-            async def my_async() -> None:
-                pass
+            async def my_async() -> str:
+                return "real result"
 
-            resp = await my_async()
+            resp = await my_async.aqueue()
             assert resp.json()["task_id"] == "async-42"
             payload = mock_post.call_args[1]["json"]
             assert payload["task_name"] == "async_task"
             assert payload["queue_name"] == "async_q"
+
+            assert await my_async() == "real result"
+    finally:
+        await atq.close()
+
+
+@pytest.mark.asyncio
+async def test_async_task_no_parens():
+    atq = AsyncTaskQueue(server_url="http://test:8001")
+    try:
+        with mock.patch.object(atq._client, "post") as mock_post:
+            mock_post.return_value = httpx.Response(201, json={"task_id": "1"})
+
+            @atq.task
+            async def no_parens() -> str:
+                return "done"
+
+            resp = await no_parens.aqueue()
+            assert resp.json()["task_id"] == "1"
+
+            assert await no_parens() == "done"
     finally:
         await atq.close()

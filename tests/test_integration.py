@@ -95,7 +95,7 @@ async def test_full_flow_client_to_server():
                 def integration_task(x: int) -> None:
                     pass
 
-                resp = integration_task(99)
+                resp = integration_task.queue(99)
                 assert resp.status_code == 201
                 assert "task_id" in resp.json()
     finally:

@@ -4,8 +4,15 @@ from typing import Any
 
 from starlette.responses import HTMLResponse
 
-dashboard_page = HTMLResponse(
-    content="""<!DOCTYPE html>
+
+def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
+    queues = sorted({s["queue_name"] for s in (stats or [])})
+    options = "<option value=''>All queues</option>"
+    for q in queues:
+        options += f"<option value='{q}'>{q}</option>"
+
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -18,31 +25,22 @@ dashboard_page = HTMLResponse(
 <div class="max-w-6xl mx-auto p-6">
   <div class="flex items-center justify-between mb-8">
     <div>
-      <h1 class="text-3xl font-bold text-gray-800 dark:text-white">
-        Lagomorph Dashboard
-      </h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
-        Real-time task queue overview
-      </p>
+      <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Lagomorph Dashboard</h1>
+      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Real-time task queue overview</p>
     </div>
-    <div class="flex gap-2">
-      <button
-        hx-get="/api/queues"
-        hx-target="#queue-cards"
-        hx-trigger="click"
-        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-      >
-        Refresh
-      </button>
+    <div class="flex items-center gap-3">
+      <label class="text-sm text-gray-500 dark:text-gray-400">Queue:</label>
+      <select id="queue-filter" onchange="setFilter(this.value)"
+              class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
+        {options}
+      </select>
     </div>
   </div>
 
-  <div hx-get="/api/queues/html" hx-trigger="every 3s" hx-target="#queue-cards" hx-swap="innerHTML">
-    <div id="queue-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-      <div class="animate-pulse bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-        <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 mb-3"></div>
-        <div class="h-8 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
-      </div>
+  <div id="queue-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+    <div class="animate-pulse bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+      <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 mb-3"></div>
+      <div class="h-8 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
     </div>
   </div>
 
@@ -50,30 +48,44 @@ dashboard_page = HTMLResponse(
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Recent Tasks</h2>
     </div>
-    <div
-      hx-get="/api/tasks/html?limit=20"
-      hx-trigger="every 3s"
-      hx-target="#tasks-table"
-      hx-swap="innerHTML"
-    >
-      <div id="tasks-table" class="overflow-x-auto">
-        <div class="p-6 text-center text-gray-400">Loading tasks...</div>
-      </div>
+    <div id="tasks-table" class="overflow-x-auto">
+      <div class="p-6 text-center text-gray-400">Connecting...</div>
     </div>
   </div>
-
-  <div class="mt-8 text-center text-xs text-gray-400">
-    Lagomorph v0.1.0 — Auto-refreshes every 3 seconds
-  </div>
 </div>
+
+<script>
+  let ws;
+  function connect() {{
+    ws = new WebSocket("ws://" + location.host + "/ws");
+    ws.onmessage = function(e) {{
+      var data = JSON.parse(e.data);
+      if (data.cards) document.getElementById("queue-cards").innerHTML = data.cards;
+      if (data.table) document.getElementById("tasks-table").innerHTML = data.table;
+    }};
+    ws.onclose = function() {{
+      setTimeout(connect, 1000);
+    }};
+  }}
+  function setFilter(value) {{
+    if (ws && ws.readyState === WebSocket.OPEN) {{
+      ws.send(JSON.stringify({{queue: value}}));
+    }}
+  }}
+  connect();
+</script>
 </body>
 </html>""",
-    media_type="text/html",
-)
+        media_type="text/html",
+    )
 
 
 def queues_html(stats: list[dict[str, Any]]) -> HTMLResponse:
     return HTMLResponse(_queue_cards_html(stats), media_type="text/html")
+
+
+def tasks_html(tasks: list[dict[str, Any]]) -> HTMLResponse:
+    return HTMLResponse(_tasks_table_html(tasks), media_type="text/html")
 
 
 def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
@@ -95,10 +107,6 @@ def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
             </div>
         </div>"""
     return cards
-
-
-def tasks_html(tasks: list[dict[str, Any]]) -> HTMLResponse:
-    return HTMLResponse(_tasks_table_html(tasks), media_type="text/html")
 
 
 def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
