@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
-
 
 SQL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS lagomorph_tasks (
@@ -33,9 +31,7 @@ class Storage:
 
     @classmethod
     async def create(cls, database_url: str, max_size: int = 10) -> Storage:
-        pool = await asyncpg.create_pool(
-            database_url, min_size=2, max_size=max_size
-        )
+        pool = await asyncpg.create_pool(database_url, min_size=2, max_size=max_size)
         async with pool.acquire() as conn:
             await conn.execute(SQL_SCHEMA)
         return cls(pool)
@@ -76,9 +72,7 @@ class Storage:
             )
             return row["id"]
 
-    async def claim_task(
-        self, worker_id: str, statuses: tuple[str, ...] = ("pending",)
-    ) -> dict[str, Any] | None:
+    async def claim_task(self, worker_id: str, statuses: tuple[str, ...] = ("pending",)) -> dict[str, Any] | None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -102,21 +96,15 @@ class Storage:
 
     async def complete_task(self, task_id: uuid.UUID) -> None:
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "DELETE FROM lagomorph_tasks WHERE id = $1", task_id
-            )
+            await conn.execute("DELETE FROM lagomorph_tasks WHERE id = $1", task_id)
 
     async def fail_task(self, task_id: uuid.UUID, error: str | None = None) -> None:
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "DELETE FROM lagomorph_tasks WHERE id = $1", task_id
-            )
+            await conn.execute("DELETE FROM lagomorph_tasks WHERE id = $1", task_id)
 
     async def get_task(self, task_id: uuid.UUID) -> dict[str, Any] | None:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM lagomorph_tasks WHERE id = $1", task_id
-            )
+            row = await conn.fetchrow("SELECT * FROM lagomorph_tasks WHERE id = $1", task_id)
             return self._parse_row(row)
 
     async def list_tasks(
@@ -144,7 +132,12 @@ class Storage:
             """
             params.append(limit)
             rows = await conn.fetch(query, *params)
-            return [self._parse_row(row) for row in rows if row is not None]
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                parsed = self._parse_row(row)
+                if parsed is not None:
+                    result.append(parsed)
+            return result
 
     async def queue_stats(self) -> list[dict[str, Any]]:
         async with self.pool.acquire() as conn:

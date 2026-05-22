@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
-import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
 
 
 def main() -> None:
@@ -14,6 +20,7 @@ def main() -> None:
     server_parser.add_argument("--port", type=int, default=8001)
     server_parser.add_argument("--database-url", default=None)
     server_parser.add_argument("--concurrency", type=int, default=4)
+    server_parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
 
     execute_parser = subparsers.add_parser("execute", help="Execute a task (internal)")
     execute_parser.add_argument("task_id", help="Task ID to execute")
@@ -35,31 +42,29 @@ def main() -> None:
 
 
 def _run_server(args: argparse.Namespace) -> None:
+    logging.getLogger().setLevel(args.log_level.upper())
     from lagomorph.server import create_app
 
-    database_url = args.database_url or os.environ.get(
-        "DATABASE_URL", "postgresql://localhost:5432/lagomorph"
-    )
+    database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
     app = create_app(database_url=database_url)
     import uvicorn
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
 
 def _run_execute(args: argparse.Namespace) -> None:
-    from lagomorph.execute import execute_task
-
     import asyncio
+
+    from lagomorph.execute import execute_task
 
     asyncio.run(execute_task(args.task_id))
 
 
 def _run_worker(args: argparse.Namespace) -> None:
+    logging.getLogger().setLevel(logging.INFO)
     from lagomorph.worker import run_worker
 
-    database_url = args.database_url or os.environ.get(
-        "DATABASE_URL", "postgresql://localhost:5432/lagomorph"
-    )
+    database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
     import asyncio
 
     asyncio.run(

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 
@@ -26,13 +27,14 @@ class TaskQueue:
         queue_name: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            task_name = name if name is not None else func.__name__
-            module_path = inspect.getmodule(func)
-            qualified_name = (
-                f"{module_path.__name__}.{func.__qualname__}"
-                if module_path
-                else func.__qualname__
-            )
+            task_name = name if name is not None else func.__name__  # ty: ignore
+            module = inspect.getmodule(func)
+            if module is None:
+                qualified_name = func.__qualname__  # ty: ignore
+                module_path = func.__module__
+            else:
+                qualified_name = f"{module.__name__}.{func.__qualname__}"  # ty: ignore
+                module_path = module.__name__
             self._registry[task_name] = qualified_name
 
             @functools.wraps(func)
@@ -43,7 +45,7 @@ class TaskQueue:
                     "queue_name": q,
                     "args": list(args),
                     "kwargs": kwargs,
-                    "module_path": qualified_name.rsplit(".", 1)[0],
+                    "module_path": module_path,
                 }
                 return self._client.post(
                     f"{self.server_url}/api/enqueue",

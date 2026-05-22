@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 from typing import Any
 
 from starlette.responses import HTMLResponse
@@ -87,11 +85,11 @@ def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
         total = q["pending"] + q["running"]
         cards += f"""
         <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">{q['queue_name']}</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">{q["queue_name"]}</div>
             <div class="text-2xl font-bold text-gray-800 dark:text-white">{total} tasks</div>
             <div class="flex gap-4 mt-3 text-sm">
-                <span class="text-yellow-600"><span class="font-medium">{q['pending']}</span> pending</span>
-                <span class="text-blue-600"><span class="font-medium">{q['running']}</span> running</span>
+                <span class="text-yellow-600"><span class="font-medium">{q["pending"]}</span> pending</span>
+                <span class="text-blue-600"><span class="font-medium">{q["running"]}</span> running</span>
             </div>
         </div>"""
     return cards
@@ -119,8 +117,8 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
         rows += f"""
         <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
             <td class="px-6 py-3 text-sm font-mono text-gray-500">{tid}...</td>
-            <td class="px-6 py-3 text-sm text-gray-800 dark:text-white">{t.get('task_name', '')}</td>
-            <td class="px-6 py-3 text-sm text-gray-500">{t.get('queue_name', '')}</td>
+            <td class="px-6 py-3 text-sm text-gray-800 dark:text-white">{t.get("task_name", "")}</td>
+            <td class="px-6 py-3 text-sm text-gray-500">{t.get("queue_name", "")}</td>
             <td class="px-6 py-3">
                 <span class="inline-block px-2 py-0.5 text-xs font-medium rounded-full {status_color}">{status}</span>
             </td>

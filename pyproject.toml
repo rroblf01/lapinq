@@ -46,9 +46,25 @@ testpaths = ["tests"]
 source_pkgs = ["lagomorph"]
 branch = true
 
+[tool.ruff]
+target-version = "py314"
+line-length = 130
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "LOG"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.1.0",
+    "ruff>=0.11.0",
+    "ty>=0.0.35",
 ]

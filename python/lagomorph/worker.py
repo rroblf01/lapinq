@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 import os
+import signal
 import sys
 import uuid
 
 from lagomorph.storage import Storage
+
+logger = logging.getLogger("lagomorph.worker")
 
 
 async def run_worker(
@@ -14,14 +19,20 @@ async def run_worker(
     poll_interval: float = 0.1,
     task_timeout: int = 300,
 ) -> None:
-    database_url = database_url or os.environ.get(
-        "DATABASE_URL", "postgresql://localhost:5432/lagomorph"
-    )
+    database_url = database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
     worker_id = str(uuid.uuid4())
     storage = await Storage.create(database_url, max_size=concurrency + 2)
 
     semaphore = asyncio.Semaphore(concurrency)
-    running = True
+    shutdown_event = asyncio.Event()
+    active_tasks: set[asyncio.Task[None]] = set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig,
+            lambda s=sig: _handle_signal(s, shutdown_event, worker_id),
+        )
 
     async def process_task(task_data: dict) -> None:
         async with semaphore:
@@ -40,36 +51,53 @@ async def run_worker(
                     )
                     stdout, stderr = await proc.communicate()
                     if proc.returncode == 0:
-                        print(
-                            f"Task {task_id} completed: {stdout.decode().strip()}"
+                        logger.info(
+                            "Task %s completed: %s",
+                            task_id,
+                            stdout.decode().strip(),
                         )
                     else:
-                        print(
-                            f"Task {task_id} failed: {stderr.decode().strip()}",
-                            file=sys.stderr,
+                        logger.warning(
+                            "Task %s failed: %s",
+                            task_id,
+                            stderr.decode().strip(),
                         )
+                    await storage.complete_task(task_id)
             except TimeoutError:
-                print(f"Task {task_id} timed out", file=sys.stderr)
-
-            # Task was already deleted by execute.py, but just in case
-            try:
+                logger.warning("Task %s timed out after %ds", task_id, task_timeout)
                 await storage.complete_task(task_id)
             except Exception:
-                pass
+                logger.exception("Unexpected error processing task %s", task_id)
+                with contextlib.suppress(Exception):
+                    await storage.complete_task(task_id)
 
-    print(
-        f"Worker {worker_id} starting (concurrency={concurrency}, "
-        f"poll_interval={poll_interval}s, timeout={task_timeout}s)"
+    logger.info(
+        "Worker %s starting (concurrency=%d, poll_interval=%.1fs, timeout=%ds)",
+        worker_id,
+        concurrency,
+        poll_interval,
+        task_timeout,
     )
 
     try:
-        while running:
+        while not shutdown_event.is_set():
             task_data = await storage.claim_task(worker_id)
             if task_data is not None:
-                asyncio.create_task(process_task(task_data))
+                t = asyncio.create_task(process_task(task_data))
+                active_tasks.add(t)
+                t.add_done_callback(active_tasks.discard)
             else:
                 await asyncio.sleep(poll_interval)
     except asyncio.CancelledError:
         pass
     finally:
+        logger.info("Worker %s shutting down, waiting for %d active tasks...", worker_id, len(active_tasks))
+        if active_tasks:
+            await asyncio.wait(active_tasks, timeout=30)
         await storage.close()
+        logger.info("Worker %s stopped", worker_id)
+
+
+def _handle_signal(sig: signal.Signals, shutdown_event: asyncio.Event, worker_id: str) -> None:
+    logger.info("Worker %s received signal %s", worker_id, sig.name)
+    shutdown_event.set()

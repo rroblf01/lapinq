@@ -71,7 +71,7 @@ async def test_list_tasks():
     storage = await make_storage()
     try:
         id1 = await storage.enqueue("task1", "q1", "m1")
-        id2 = await storage.enqueue("task2", "q2", "m2")
+        await storage.enqueue("task2", "q2", "m2")
 
         tasks = await storage.list_tasks()
         assert len(tasks) == 2
@@ -129,9 +129,7 @@ async def test_skipped_locked_task():
         await storage.enqueue("t2", "q1", "m1")
 
         async with storage.pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE lagomorph_tasks SET status = 'running' WHERE id = $1", id1
-            )
+            await conn.execute("UPDATE lagomorph_tasks SET status = 'running' WHERE id = $1", id1)
 
         claimed = await storage.claim_task("worker-1", statuses=("pending",))
         assert claimed is not None
