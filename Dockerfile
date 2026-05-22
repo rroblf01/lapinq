@@ -1,0 +1,30 @@
+# Stage 1: Build Rust worker
+FROM rust:1.95-slim-bookworm AS builder
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY src/main.rs src/main.rs
+RUN cargo build --release
+
+# Stage 2: Python runtime
+FROM python:3.14-slim-bookworm
+
+WORKDIR /app
+
+# Install system deps for asyncpg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Rust binary
+COPY --from=builder /build/target/release/lagomorph-worker /usr/local/bin/lagomorph-worker
+
+# Install Python package
+COPY pyproject.toml Cargo.toml README.md ./
+COPY python/ python/
+COPY src/main.rs src/
+RUN pip install --no-cache-dir maturin && maturin develop --release
+
+EXPOSE 8001
+
+CMD ["python", "-m", "lagomorph", "server", "--host", "0.0.0.0", "--port", "8001"]

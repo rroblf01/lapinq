@@ -1,0 +1,53 @@
+site_name: Lagomorph
+site_description: A lightweight task queue with PostgreSQL backend
+site_url: https://ricardorobles.github.io/lagomorph
+repo_url: https://github.com/ricardorobles/lagomorph
+repo_name: ricardorobles/lagomorph
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Usage: usage.md
+  - Deployment: deployment.md
+  - API Reference:
+    - Client: api/client.md
+    - Server: api/server.md
+    - Worker: api/worker.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true
+
+plugins:
+  - search
