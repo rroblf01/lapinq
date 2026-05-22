@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import signal
 
 import pytest
@@ -261,5 +262,39 @@ async def test_run_worker_loop_processes_task(monkeypatch):
         task = await storage.get_task(task_id)
         assert task is not None
         assert task["status"] == "completed"
+    finally:
+        await storage.close()
+
+
+@pytest.mark.slow
+async def test_rust_worker_binary_processes_task():
+    storage = await Storage.create(DATABASE_URL)
+    try:
+        task_id = await storage.enqueue(
+            "add", "test_rust_bin", "tests.test_execute",
+            args=[10, 20], max_retries=0,
+        )
+        assert task_id is not None
+
+        proc = await asyncio.create_subprocess_exec(
+            "target/debug/lapinq-worker",
+            "--database-url", DATABASE_URL,
+            "--concurrency", "2",
+            "--poll-interval-secs", "0.05",
+            "--task-timeout-secs", "10",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "DATABASE_URL": DATABASE_URL},
+        )
+
+        await asyncio.sleep(1.5)
+
+        proc.kill()
+        await proc.wait()
+
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "completed", f"Task status: {task['status']}, error: {task.get('error')}"
+        assert task["result"] == "30"
     finally:
         await storage.close()
