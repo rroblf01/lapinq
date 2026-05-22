@@ -49,7 +49,7 @@ async def run_worker(
                         "lagomorph",
                         "execute",
                         str(task_id),
-                        env={**os.environ, "LAGOMORPH_WORKER_ID": worker_id},
+                        env={**os.environ, "DATABASE_URL": database_url, "LAGOMORPH_WORKER_ID": worker_id},
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )

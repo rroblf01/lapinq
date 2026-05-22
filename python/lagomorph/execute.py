@@ -41,6 +41,7 @@ async def execute_task(task_id: str) -> None:
             sys.exit(1)
 
         result = func(*args, **kwargs)
+        print(result, flush=True)
         logger.info("Task %s completed: %s", task_id, result)
     except Exception as e:
         logger.exception("Task %s failed: %s", task_id, e)

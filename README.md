@@ -172,13 +172,81 @@ uv run pytest
 - [x] **Dead Letter Queue**: `/api/tasks/failed` list + `/api/tasks/{id}/requeue`
 - [x] **Worker heartbeat**: periodic `last_heartbeat` updates every 15s
 
-### Phase 4 — Testing & documentation
-- [ ] Tests for `execute.py` (100% uncovered)
-- [ ] Tests for `worker.py` main loop
-- [ ] Tests for CLI argument parsing
+### Phase 4 — Testing & documentation ✅
+- [x] Tests for `execute.py` (success, not-found, function-error via subprocess)
+- [x] Tests for `worker.py` main loop (full claim-process-complete cycle)
+- [x] Tests for CLI argument parsing (argparse dispatch)
+- [x] Document DB schema, env vars, error codes, task lifecycle
 - [ ] Rust worker integration tests against real PostgreSQL
-- [ ] Document DB schema, env vars, error codes, task lifecycle
 - [ ] Real-world example projects in `examples/`
+
+---
+
+## Database Schema
+
+All queue state lives in a single table `lagomorph_tasks`:
+
+| Column | Type | Default | Description |
+|---|---|---|---|
+| `id` | `UUID` | `gen_random_uuid()` | Primary key |
+| `queue_name` | `TEXT` | — | Queue this task belongs to |
+| `task_name` | `TEXT` | — | Name of the function to call |
+| `module_path` | `TEXT` | — | Python module to import |
+| `args` | `JSONB` | `[]` | Positional arguments |
+| `kwargs` | `JSONB` | `{}` | Keyword arguments |
+| `status` | `TEXT` | `pending` | One of: `pending`, `running`, `completed`, `failed` |
+| `result` | `TEXT` | — | Serialized return value (completed tasks) |
+| `error` | `TEXT` | — | Error message (failed tasks) |
+| `attempts` | `INT` | `0` | Number of execution attempts |
+| `max_retries` | `INT` | `3` | Max retries before marking as failed |
+| `priority` | `INT` | `0` | Higher values claim first |
+| `created_at` | `TIMESTAMPTZ` | `now()` | Creation timestamp |
+| `scheduled_at` | `TIMESTAMPTZ` | `now()` | Earliest allowed claim time |
+| `started_at` | `TIMESTAMPTZ` | — | When a worker claimed the task |
+| `completed_at` | `TIMESTAMPTZ` | — | When the task finished (completed or failed) |
+| `last_heartbeat` | `TIMESTAMPTZ` | — | Worker periodic heartbeat |
+| `worker_id` | `TEXT` | — | Which worker claimed the task |
+
+Key indexes:
+- `idx_tasks_status` — filtering by status + created_at order
+- `idx_tasks_scheduled` — efficient pending-task polling (`WHERE status = 'pending'`)
+- `idx_tasks_pending_priority` — priority-aware claiming
+
+## Environment Variables
+
+| Variable | Default | Used by | Purpose |
+|---|---|---|---|
+| `DATABASE_URL` | `postgresql://localhost:5432/lagomorph` | server, worker, execute | PostgreSQL connection string |
+| `LAGOMORPH_API_KEY` | *(none — auth disabled)* | server | Enables `X-API-Key` auth middleware |
+| `LAGOMORPH_RATE_LIMIT` | `0` (disabled) | server | Max requests per minute per IP |
+| `LAGOMORPH_JSON_LOG` | `0` (text logging) | server, worker, execute | Set to `1` for structured JSON |
+| `LAGOMORPH_LOG_LEVEL` | `INFO` | server, worker, execute | Log level override |
+
+## Task Lifecycle
+
+```
+enqueue ──► pending ──► running ──► completed
+                │                     │
+                │                     ├── result captured
+                │                     └── status = 'completed'
+                │
+                └── (scheduled_at in future)
+                        └── claimed after scheduled_at
+
+running ──► fail (attempts < max_retries)
+                └── pending (scheduled with backoff)
+
+running ──► fail (attempts >= max_retries)
+                └── failed (stored with error)
+
+running ──► worker crash / timeout
+                └── pending (recovered by stale-task reaper)
+
+failed ──► requeue
+                └── pending (reset attempts = 0)
+```
+
+Retry backoff schedule: 10s, 30s, 60s, 300s, 600s (cap at 600s).
 
 ---
 
