@@ -205,7 +205,7 @@ async fn execute_task(
         }
         Err(_) => {
             warn!("Task {} timed out after {}s", task.id, timeout_secs);
-            fail_task_in_db(client, task.id, "timed out", 0, 3)
+            fail_task_in_db(client, task.id, "timed out", task.attempts, task.max_retries)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(())
@@ -213,8 +213,24 @@ async fn execute_task(
     }
 }
 
+fn retry_backoff_seconds(attempt: i32) -> i32 {
+    let backoffs = [10, 30, 60, 300, 600];
+    let idx = (attempt - 1) as usize;
+    if attempt <= 0 {
+        0
+    } else if idx >= backoffs.len() {
+        backoffs[backoffs.len() - 1]
+    } else {
+        backoffs[idx]
+    }
+}
+
+fn python_interpreter() -> String {
+    std::env::var("LAGOMORPH_PYTHON").unwrap_or_else(|_| "python".to_string())
+}
+
 async fn run_python_subprocess(task: &Task) -> Result<(String, String), (String, i32, i32)> {
-    let child = Command::new("python")
+    let child = Command::new(python_interpreter())
         .args(["-m", "lagomorph", "execute", &task.id.to_string()])
         .env("DATABASE_URL", std::env::var("DATABASE_URL").unwrap_or_default())
         .stdout(Stdio::piped())
@@ -260,7 +276,7 @@ async fn fail_task_in_db(
 ) -> Result<(), String> {
     let new_attempts = attempts + 1;
     if new_attempts < max_retries {
-        let backoff = std::cmp::min(10_i32.pow(new_attempts as u32), 600);
+        let backoff = retry_backoff_seconds(new_attempts);
         client
             .execute(
                 "UPDATE lagomorph_tasks SET status = 'pending', attempts = $2, error = $3, \

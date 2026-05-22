@@ -257,13 +257,13 @@ async def test_priority_ordering():
 async def test_scheduled_at_delays_claim():
     storage = await make_storage()
     try:
-        from datetime import UTC, datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
-        future = datetime.now(UTC) + timedelta(hours=1)
+        future = datetime.now(timezone.utc) + timedelta(hours=1)
         task_id = await storage.enqueue("delayed", "q1", "m1", scheduled_at=future)
         claimed = await storage.claim_task("w1")
         assert claimed is None
-        past = datetime.now(UTC) - timedelta(hours=1)
+        past = datetime.now(timezone.utc) - timedelta(hours=1)
         await storage.enqueue("immediate", "q1", "m1", scheduled_at=past)
         claimed = await storage.claim_task("w1")
         assert claimed is not None

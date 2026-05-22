@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from starlette.applications import Starlette
@@ -129,7 +129,7 @@ async def enqueue(request: Request) -> JSONResponse:
         try:
             scheduled_at = datetime.fromisoformat(scheduled_at)
             if scheduled_at.tzinfo is None:
-                scheduled_at = scheduled_at.replace(tzinfo=UTC)
+                scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
             return JSONResponse({"error": "invalid scheduled_at format"}, status_code=400)
 

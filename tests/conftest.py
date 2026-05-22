@@ -1,18 +1,35 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 
 import pytest
 from lagomorph.storage import SQL_SCHEMA
-from testcontainers.postgres import PostgresContainer
 
-DATABASE_URL: str | None = None
+DATABASE_URL: str | None = os.environ.get("DATABASE_URL")
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _postgres_container():
     global DATABASE_URL
+
+    if DATABASE_URL is not None:
+        async def init_schema() -> None:
+            import asyncpg
+
+            conn = await asyncpg.connect(DATABASE_URL)
+            try:
+                await conn.execute(SQL_SCHEMA)
+            finally:
+                await conn.close()
+
+        asyncio.run(init_schema())
+        yield
+        return
+
+    from testcontainers.postgres import PostgresContainer
+
     with PostgresContainer("postgres:16-alpine") as pg:
         DATABASE_URL = (
             f"postgresql://{pg.username}:{pg.password}"
