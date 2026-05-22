@@ -263,6 +263,10 @@ async def ws_endpoint(websocket: WebSocket) -> None:
     storage: Storage = websocket.app.state.storage
     queue_filter: str | None = None
     id_filter: str | None = None
+    status_filter: str | None = None
+    args_search: str | None = None
+    result_search: str | None = None
+    error_search: str | None = None
     last_cards: str | None = None
     last_table: str | None = None
     changed = True
@@ -280,12 +284,25 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     tasks = await storage.list_tasks(limit=20)
                     tasks = [t for t in tasks if raw in str(t.get("id", ""))]
                 stats = await storage.queue_stats()
-            elif queue_filter:
-                stats = [s for s in await storage.queue_stats() if s["queue_name"] == queue_filter]
-                tasks = await storage.list_tasks(queue_name=queue_filter, limit=20)
             else:
                 stats = await storage.queue_stats()
-                tasks = await storage.list_tasks(limit=20)
+                tasks = await storage.list_tasks(
+                    queue_name=queue_filter,
+                    status=status_filter,
+                    limit=200,
+                )
+                if args_search:
+                    q = args_search.lower()
+                    tasks = [t for t in tasks if q in str(t.get("args", "")).lower()]
+                if result_search:
+                    q = result_search.lower()
+                    tasks = [t for t in tasks if q in str(t.get("result", "")).lower()]
+                if error_search:
+                    q = error_search.lower()
+                    tasks = [t for t in tasks if q in str(t.get("error", "")).lower()]
+                tasks = tasks[:20]
+                if queue_filter:
+                    stats = [s for s in stats if s["queue_name"] == queue_filter]
             cards = _queue_cards_html(stats)
             table = _tasks_table_html([_serialize_task(t) for t in tasks])
             if cards != last_cards or table != last_table or changed:
@@ -305,6 +322,18 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     changed = True
                 if "id" in data:
                     id_filter = data["id"] or None
+                    changed = True
+                if "status" in data:
+                    status_filter = data["status"] or None
+                    changed = True
+                if "args" in data:
+                    args_search = data["args"] or None
+                    changed = True
+                if "result" in data:
+                    result_search = data["result"] or None
+                    changed = True
+                if "error" in data:
+                    error_search = data["error"] or None
                     changed = True
             except asyncio.TimeoutError:
                 pass

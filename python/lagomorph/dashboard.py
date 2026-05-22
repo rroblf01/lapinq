@@ -19,7 +19,8 @@ body {
 .header h1 small { font-size: 0.875rem; font-weight: 400; color: #6b7280; margin-left: 0.5rem; }
 
 .filters { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.filters label { font-size: 0.8125rem; color: #6b7280; white-space: nowrap; }
+.filter-group { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+.filter-group label { font-size: 0.8125rem; color: #6b7280; }
 .filters select, .filters input {
     padding: 0.375rem 0.625rem;
     border: 1px solid #d1d5db;
@@ -146,10 +147,24 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
       <h1>Lagomorph <small>Dashboard</small></h1>
     </div>
     <div class="filters">
-      <label for="queue-filter">Queue:</label>
-      <select id="queue-filter" onchange="setFilter('queue',this.value)">{options}</select>
-      <label for="id-filter">Task ID:</label>
-      <input id="id-filter" type="text" placeholder="Filter by ID..." oninput="setFilter('id',this.value)">
+      <span class="filter-group"><label for="queue-filter">Queue:</label>
+      <select id="queue-filter" onchange="setFilter('queue',this.value)">{options}</select></span>
+      <span class="filter-group"><label for="status-filter">Status:</label>
+      <select id="status-filter" onchange="setFilter('status',this.value)">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="running">Running</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
+      </select></span>
+      <span class="filter-group"><label for="id-filter">ID:</label>
+      <input id="id-filter" type="text" placeholder="Task ID..." oninput="setFilter('id',this.value)"></span>
+      <span class="filter-group"><label for="args-filter">Args:</label>
+      <input id="args-filter" type="text" placeholder="Search args..." oninput="setFilter('args',this.value)"></span>
+      <span class="filter-group"><label for="result-filter">Result:</label>
+      <input id="result-filter" type="text" placeholder="Search result..." oninput="setFilter('result',this.value)"></span>
+      <span class="filter-group"><label for="error-filter">Error:</label>
+      <input id="error-filter" type="text" placeholder="Search error..." oninput="setFilter('error',this.value)"></span>
     </div>
   </div>
 
