@@ -1,0 +1,54 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "lagomorph"
+version = "0.1.0"
+description = "A lightweight task queue with PostgreSQL backend, replacing Celery + RabbitMQ"
+readme = "README.md"
+authors = [
+    { name = "Ricardo Robles", email = "ricardo.r.f@hotmail.com" }
+]
+requires-python = ">=3.14"
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+    "Topic :: System :: Distributed Computing",
+]
+dependencies = [
+    "starlette>=0.45",
+    "uvicorn[standard]>=0.34",
+    "asyncpg>=0.30",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+    "itsdangerous>=2.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/ricardorobles/lagomorph"
+Repository = "https://github.com/ricardorobles/lagomorph"
+Documentation = "https://ricardorobles.github.io/lagomorph"
+
+[tool.maturin]
+python-source = "python"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source_pkgs = ["lagomorph"]
+branch = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+]

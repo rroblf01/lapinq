@@ -1,0 +1,20 @@
+[package]
+name = "lagomorph-worker"
+version = "0.1.0"
+description = "Lagomorph Rust worker - polls PostgreSQL and executes Python tasks"
+edition = "2021"
+
+[[bin]]
+name = "lagomorph-worker"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-serde_json-1", "with-chrono-0_4"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+env_logger = "0.11"
