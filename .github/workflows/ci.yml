@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   lint:
@@ -20,6 +20,8 @@ jobs:
         run: uv sync
       - name: Run ruff
         run: uv run ruff check python/ tests/
+      - name: Run ty
+        run: uv run ty check python/lagomorph/ tests/ --python-version 3.14
 
   rust:
     runs-on: ubuntu-latest
