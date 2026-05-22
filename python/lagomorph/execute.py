@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
 import os
 import sys
@@ -40,7 +41,10 @@ async def execute_task(task_id: str) -> None:
             logger.error("Function %s not found in module %s", task_name, module_path)
             sys.exit(1)
 
-        result = func(*args, **kwargs)
+        if inspect.iscoroutinefunction(func):
+            result = await func(*args, **kwargs)
+        else:
+            result = func(*args, **kwargs)
         print(result, flush=True)
         logger.info("Task %s completed: %s", task_id, result)
     except Exception as e:

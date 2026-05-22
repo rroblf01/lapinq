@@ -384,11 +384,10 @@ async def test_websocket_sends_stats_and_tasks():
     from starlette.testclient import TestClient
 
     app = create_app(database_url=DATABASE_URL)
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as ws:
-            data = ws.receive_json()
-            assert "cards" in data
-            assert "table" in data
+    with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        data = ws.receive_json()
+        assert "cards" in data
+        assert "table" in data
 
 
 async def test_rate_limiting_blocks_excess():

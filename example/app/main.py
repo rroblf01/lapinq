@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import time
-import asyncio
-import httpx
 
+import httpx
 from fastapi import FastAPI
 from lagomorph.client import AsyncTaskQueue
 
