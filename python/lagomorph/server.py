@@ -5,6 +5,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 
 from starlette.applications import Starlette
@@ -18,7 +19,7 @@ from starlette.routing import Route
 from lagomorph.dashboard import dashboard_page, queues_html, tasks_html
 from lagomorph.storage import Storage
 
-MAX_PAYLOAD_SIZE = 1024 * 100  # 100 KB
+MAX_PAYLOAD_SIZE = 1024 * 100
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -67,8 +68,10 @@ def create_app(
         Route("/api/tasks/html", tasks_html_endpoint, methods=["GET"]),
         Route("/api/queues/html", queues_html_endpoint, methods=["GET"]),
         Route("/api/tasks", list_tasks, methods=["GET"]),
+        Route("/api/tasks/failed", list_failed_tasks, methods=["GET"]),
         Route("/api/tasks/{task_id:str}", get_task, methods=["GET"]),
         Route("/api/tasks/{task_id:str}", cancel_task, methods=["DELETE"]),
+        Route("/api/tasks/{task_id:str}/requeue", requeue_task, methods=["POST"]),
         Route("/dashboard", dashboard, methods=["GET"]),
         Route("/health", health, methods=["GET"]),
         Route("/metrics", metrics, methods=["GET"]),
@@ -113,11 +116,22 @@ async def enqueue(request: Request) -> JSONResponse:
     module_path = body.get("module_path", "")
     args = body.get("args", [])
     kwargs = body.get("kwargs", {})
+    scheduled_at = body.get("scheduled_at")
+    max_retries = body.get("max_retries", 3)
+    priority = body.get("priority", 0)
 
     if not task_name:
         return JSONResponse({"error": "task_name is required"}, status_code=400)
     if not module_path:
         return JSONResponse({"error": "module_path is required"}, status_code=400)
+
+    if scheduled_at is not None:
+        try:
+            scheduled_at = datetime.fromisoformat(scheduled_at)
+            if scheduled_at.tzinfo is None:
+                scheduled_at = scheduled_at.replace(tzinfo=UTC)
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "invalid scheduled_at format"}, status_code=400)
 
     task_id = await storage.enqueue(
         task_name=task_name,
@@ -125,6 +139,9 @@ async def enqueue(request: Request) -> JSONResponse:
         module_path=module_path,
         args=args,
         kwargs=kwargs,
+        scheduled_at=scheduled_at,
+        max_retries=max_retries,
+        priority=priority,
     )
     return JSONResponse({"task_id": str(task_id)}, status_code=201)
 
@@ -141,6 +158,14 @@ async def list_tasks(request: Request) -> JSONResponse:
     status = request.query_params.get("status")
     limit = int(request.query_params.get("limit", "50"))
     tasks = await storage.list_tasks(queue_name=queue_name, status=status, limit=limit)
+    return JSONResponse([_serialize_task(t) for t in tasks])
+
+
+async def list_failed_tasks(request: Request) -> JSONResponse:
+    storage: Storage = request.app.state.storage
+    queue_name = request.query_params.get("queue")
+    limit = int(request.query_params.get("limit", "50"))
+    tasks = await storage.list_failed_tasks(queue_name=queue_name, limit=limit)
     return JSONResponse([_serialize_task(t) for t in tasks])
 
 
@@ -164,6 +189,17 @@ async def cancel_task(request: Request) -> JSONResponse:
     if not cancelled:
         return JSONResponse({"error": "task not found or not pending"}, status_code=404)
     return JSONResponse({"status": "cancelled"})
+
+
+async def requeue_task(request: Request) -> JSONResponse:
+    storage: Storage = request.app.state.storage
+    task_id = _parse_uuid(request.path_params["task_id"])
+    if task_id is None:
+        return JSONResponse({"error": "invalid task id"}, status_code=400)
+    requeued = await storage.requeue_task(task_id)
+    if not requeued:
+        return JSONResponse({"error": "task not found or not failed"}, status_code=404)
+    return JSONResponse({"status": "requeued"})
 
 
 async def queues_html_endpoint(request: Request) -> HTMLResponse:
@@ -217,7 +253,7 @@ def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:
     for key in ("id",):
         if key in result and isinstance(result[key], uuid.UUID):
             result[key] = str(result[key])
-    for key in ("created_at", "started_at", "completed_at", "scheduled_at"):
+    for key in ("created_at", "started_at", "completed_at", "scheduled_at", "last_heartbeat"):
         if key in result and result[key] is not None:
             result[key] = result[key].isoformat()
     return result

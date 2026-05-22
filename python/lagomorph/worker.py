@@ -12,6 +12,8 @@ from lagomorph.storage import Storage
 
 logger = logging.getLogger("lagomorph.worker")
 
+HEARTBEAT_INTERVAL = 15.0
+
 
 async def run_worker(
     database_url: str | None = None,
@@ -33,6 +35,8 @@ async def run_worker(
             sig,
             lambda s=sig: _handle_signal(s, shutdown_event, worker_id),
         )
+
+    heartbeat_task = asyncio.create_task(_heartbeat_loop(storage, worker_id, shutdown_event))
 
     async def process_task(task_data: dict) -> None:
         async with semaphore:
@@ -86,11 +90,23 @@ async def run_worker(
     except asyncio.CancelledError:
         pass
     finally:
+        heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat_task
         logger.info("Worker %s shutting down, waiting for %d active tasks...", worker_id, len(active_tasks))
         if active_tasks:
             await asyncio.wait(active_tasks, timeout=30)
         await storage.close()
         logger.info("Worker %s stopped", worker_id)
+
+
+async def _heartbeat_loop(storage: Storage, worker_id: str, shutdown_event: asyncio.Event) -> None:
+    while not shutdown_event.is_set():
+        try:
+            await storage.heartbeat(worker_id)
+        except Exception:
+            logger.exception("Heartbeat failed for worker %s", worker_id)
+        await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
 def _handle_signal(sig: signal.Signals, shutdown_event: asyncio.Event, worker_id: str) -> None:

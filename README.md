@@ -165,12 +165,12 @@ uv run pytest
 - [x] **Structured logging**: JSON logging with `LAGOMORPH_JSON_LOG=1`
 - [x] **Configurable pool size**: `max_size` parameter in `Storage.create()`
 
-### Phase 3 — Advanced features
-- [ ] **Scheduled tasks**: `schedule_at` support for delayed execution
-- [ ] **Priority queues**: `priority` column for ordering
-- [ ] **Async client**: `AsyncTaskQueue` for asyncio codebases
-- [ ] **Dead Letter Queue**: isolate tasks that exhausted retries
-- [ ] **Worker heartbeat**: periodic `last_heartbeat` to detect hung workers
+### Phase 3 — Advanced features ✅
+- [x] **Scheduled tasks**: `scheduled_at` support for delayed execution
+- [x] **Priority queues**: `priority` column with `ORDER BY priority DESC, created_at`
+- [x] **Async client**: `AsyncTaskQueue` for asyncio codebases
+- [x] **Dead Letter Queue**: `/api/tasks/failed` list + `/api/tasks/{id}/requeue`
+- [x] **Worker heartbeat**: periodic `last_heartbeat` updates every 15s
 
 ### Phase 4 — Testing & documentation
 - [ ] Tests for `execute.py` (100% uncovered)

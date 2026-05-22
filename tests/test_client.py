@@ -4,7 +4,7 @@ from unittest import mock
 
 import httpx
 import pytest
-from lagomorph.client import TaskQueue
+from lagomorph.client import AsyncTaskQueue, TaskQueue
 
 
 @pytest.fixture
@@ -105,3 +105,39 @@ def test_multiple_tasks_different_queues():
 
         task_b()
         assert mock_post.call_args[1]["json"]["queue_name"] == "queue_b"
+
+
+def test_task_decorator_with_scheduled_at():
+    tq = TaskQueue(server_url="http://test:8001")
+    with mock.patch.object(tq._client, "post") as mock_post:
+        mock_post.return_value = httpx.Response(201, json={"task_id": "1"})
+
+        @tq.task(name="scheduled", scheduled_at="2099-01-01T00:00:00", max_retries=5, priority=10)
+        def scheduled() -> None:
+            pass
+
+        scheduled()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["scheduled_at"] == "2099-01-01T00:00:00"
+        assert payload["max_retries"] == 5
+        assert payload["priority"] == 10
+
+
+@pytest.mark.asyncio
+async def test_async_task_queue():
+    atq = AsyncTaskQueue(server_url="http://test:8001", queue_name="async_q")
+    try:
+        with mock.patch.object(atq._client, "post") as mock_post:
+            mock_post.return_value = httpx.Response(201, json={"task_id": "async-42"})
+
+            @atq.task(name="async_task")
+            async def my_async() -> None:
+                pass
+
+            resp = await my_async()
+            assert resp.json()["task_id"] == "async-42"
+            payload = mock_post.call_args[1]["json"]
+            assert payload["task_name"] == "async_task"
+            assert payload["queue_name"] == "async_q"
+    finally:
+        await atq.close()

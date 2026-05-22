@@ -35,6 +35,7 @@ struct Task {
     status: String,
     attempts: i32,
     max_retries: i32,
+    priority: i32,
 }
 
 #[tokio::main]
@@ -74,16 +75,23 @@ async fn main() {
             error        TEXT,
             attempts     INT NOT NULL DEFAULT 0,
             max_retries  INT NOT NULL DEFAULT 3,
+            priority     INT NOT NULL DEFAULT 0,
             created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
             scheduled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             started_at   TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
+            last_heartbeat TIMESTAMPTZ,
             worker_id    TEXT
         );
+        ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
+        ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
         CREATE INDEX IF NOT EXISTS idx_tasks_status
             ON lagomorph_tasks(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_tasks_scheduled
             ON lagomorph_tasks(scheduled_at)
+            WHERE status = 'pending';
+        CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
+            ON lagomorph_tasks(priority DESC, created_at)
             WHERE status = 'pending';
         ",
         )
@@ -131,16 +139,17 @@ async fn claim_task(client: &tokio_postgres::Client, worker_id: &str) -> Result<
             UPDATE lagomorph_tasks
             SET status = 'running',
                 started_at = now(),
-                worker_id = $1
+                worker_id = $1,
+                last_heartbeat = now()
             WHERE id = (
                 SELECT id FROM lagomorph_tasks
                 WHERE status = 'pending'
                 AND scheduled_at <= now()
-                ORDER BY created_at
+                ORDER BY priority DESC, created_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
-            RETURNING id, queue_name, task_name, module_path, args, kwargs, status, attempts, max_retries
+            RETURNING id, queue_name, task_name, module_path, args, kwargs, status, attempts, max_retries, priority
             ",
             &[&worker_id],
         )
@@ -157,6 +166,7 @@ async fn claim_task(client: &tokio_postgres::Client, worker_id: &str) -> Result<
             status: r.get(6),
             attempts: r.get(7),
             max_retries: r.get(8),
+            priority: r.get(9),
         })),
         None => Ok(None),
     }
@@ -293,6 +303,7 @@ mod tests {
             status: "pending".into(),
             attempts: 0,
             max_retries: 3,
+            priority: 0,
         };
         let json = serde_json::to_string(&task).unwrap();
         let deserialized: Task = serde_json::from_str(&json).unwrap();

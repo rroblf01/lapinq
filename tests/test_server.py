@@ -328,3 +328,96 @@ async def test_rate_limiting_blocks_excess():
             assert r.json()["error"] == "rate limit exceeded"
     finally:
         await storage.close()
+
+
+async def test_enqueue_with_scheduled_at():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            payload = {
+                "task_name": "delayed",
+                "queue_name": "q1",
+                "module_path": "m1",
+                "scheduled_at": "2099-06-15T12:30:00+00:00",
+            }
+            resp = await client.post("/api/enqueue", json=payload)
+            assert resp.status_code == 201
+            resp2 = await client.get("/api/tasks")
+            tasks = resp2.json()
+            assert "2099-06-15T12:30:00" in tasks[0]["scheduled_at"]
+    finally:
+        await storage.close()
+
+
+async def test_enqueue_invalid_scheduled_at():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            payload = {
+                "task_name": "bad",
+                "queue_name": "q1",
+                "module_path": "m1",
+                "scheduled_at": "not-a-date",
+            }
+            resp = await client.post("/api/enqueue", json=payload)
+            assert resp.status_code == 400
+            assert "scheduled_at" in resp.json()["error"]
+    finally:
+        await storage.close()
+
+
+async def test_list_failed_tasks_endpoint():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(
+                "/api/enqueue",
+                json={"task_name": "f1", "queue_name": "q1", "module_path": "m1", "max_retries": 0},
+            )
+            task_id = uuid.UUID(resp.json()["task_id"])
+            await storage.claim_task("test-w1")
+            await storage.fail_task(task_id, error="boom")
+            resp2 = await client.get("/api/tasks/failed")
+            assert resp2.status_code == 200
+            ids = {t["id"] for t in resp2.json()}
+            assert str(task_id) in ids
+    finally:
+        await storage.close()
+
+
+async def test_requeue_endpoint():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(
+                "/api/enqueue",
+                json={"task_name": "r1", "queue_name": "q2", "module_path": "m1", "max_retries": 0},
+            )
+            task_id = uuid.UUID(resp.json()["task_id"])
+            await storage.claim_task("test-w2")
+            await storage.fail_task(task_id, error="boom")
+            resp2 = await client.post(f"/api/tasks/{task_id}/requeue", json={})
+            assert resp2.status_code == 200
+            assert resp2.json()["status"] == "requeued"
+    finally:
+        await storage.close()

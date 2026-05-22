@@ -183,3 +183,101 @@ async def test_skipped_locked_task():
         assert claimed["id"] != id1
     finally:
         await storage.close()
+
+
+async def test_list_failed_tasks():
+    storage = await make_storage()
+    try:
+        t1 = await storage.enqueue("f1", "q1", "m1", max_retries=0)
+        t2 = await storage.enqueue("f2", "q1", "m1", max_retries=0)
+        t3 = await storage.enqueue("ok", "q1", "m1")
+        await storage.claim_task("w1")
+        await storage.fail_task(t1, error="err1")
+        await storage.claim_task("w1")
+        await storage.fail_task(t2, error="err2")
+        failed = await storage.list_failed_tasks()
+        ids = {t["id"] for t in failed}
+        assert t1 in ids
+        assert t2 in ids
+        assert t3 not in ids
+    finally:
+        await storage.close()
+
+
+async def test_requeue_task():
+    storage = await make_storage()
+    try:
+        t1 = await storage.enqueue("rq1", "q1", "m1", max_retries=0)
+        await storage.claim_task("w1")
+        await storage.fail_task(t1, error="nope")
+        ok = await storage.requeue_task(t1)
+        assert ok is True
+        task = await storage.get_task(t1)
+        assert task is not None
+        assert task["status"] == "pending"
+        assert task["attempts"] == 0
+        assert task["error"] is None
+        ok = await storage.requeue_task(t1)
+        assert ok is False
+    finally:
+        await storage.close()
+
+
+async def test_heartbeat():
+    storage = await make_storage()
+    try:
+        t1 = await storage.enqueue("hb1", "q1", "m1")
+        await storage.claim_task("w1")
+        task_before = await storage.get_task(t1)
+        assert task_before is not None
+        assert task_before["last_heartbeat"] is not None
+        await storage.heartbeat("w1")
+        task_after = await storage.get_task(t1)
+        assert task_after is not None
+        assert task_after["last_heartbeat"] >= task_before["last_heartbeat"]
+    finally:
+        await storage.close()
+
+
+async def test_priority_ordering():
+    storage = await make_storage()
+    try:
+        low = await storage.enqueue("low", "q1", "m1", priority=0)
+        high = await storage.enqueue("high", "q1", "m1", priority=10)
+        t1 = await storage.claim_task("w1")
+        assert t1 is not None
+        assert t1["id"] == high
+        t2 = await storage.claim_task("w1")
+        assert t2 is not None
+        assert t2["id"] == low
+    finally:
+        await storage.close()
+
+
+async def test_scheduled_at_delays_claim():
+    storage = await make_storage()
+    try:
+        from datetime import UTC, datetime, timedelta
+
+        future = datetime.now(UTC) + timedelta(hours=1)
+        task_id = await storage.enqueue("delayed", "q1", "m1", scheduled_at=future)
+        claimed = await storage.claim_task("w1")
+        assert claimed is None
+        past = datetime.now(UTC) - timedelta(hours=1)
+        await storage.enqueue("immediate", "q1", "m1", scheduled_at=past)
+        claimed = await storage.claim_task("w1")
+        assert claimed is not None
+        assert claimed["id"] != task_id
+    finally:
+        await storage.close()
+
+
+async def test_enqueue_with_max_retries():
+    storage = await make_storage()
+    try:
+        task_id = await storage.enqueue("retry5", "q1", "m1", max_retries=5)
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["max_retries"] == 5
+    finally:
+        await storage.close()

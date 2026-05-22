@@ -5,7 +5,7 @@ from typing import Any
 
 import asyncpg
 
-RETRY_BACKOFF_SECONDS = (10, 30, 60, 300, 600)  # exponential backoff per attempt
+RETRY_BACKOFF_SECONDS = (10, 30, 60, 300, 600)
 
 SQL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS lagomorph_tasks (
@@ -21,18 +21,27 @@ CREATE TABLE IF NOT EXISTS lagomorph_tasks (
     error        TEXT,
     attempts     INT NOT NULL DEFAULT 0,
     max_retries  INT NOT NULL DEFAULT 3,
+    priority     INT NOT NULL DEFAULT 0,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     scheduled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     started_at   TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
+    last_heartbeat TIMESTAMPTZ,
     worker_id    TEXT
 );
+
+ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
+ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status
     ON lagomorph_tasks(status, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_scheduled
     ON lagomorph_tasks(scheduled_at)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
+    ON lagomorph_tasks(priority DESC, created_at)
     WHERE status = 'pending';
 """
 
@@ -69,15 +78,16 @@ class Storage:
         kwargs: dict[str, Any] | None = None,
         scheduled_at: Any = None,
         max_retries: int = 3,
+        priority: int = 0,
     ) -> uuid.UUID:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO lagomorph_tasks
                     (task_name, queue_name, module_path, args, kwargs, status,
-                     scheduled_at, max_retries)
+                     scheduled_at, max_retries, priority)
                 VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, 'pending',
-                        COALESCE($6::timestamptz, now()), $7)
+                        COALESCE($6::timestamptz, now()), $7, $8)
                 RETURNING id
                 """,
                 task_name,
@@ -87,6 +97,7 @@ class Storage:
                 json_dumps(kwargs or {}),
                 scheduled_at,
                 max_retries,
+                priority,
             )
             return row["id"]
 
@@ -101,12 +112,13 @@ class Storage:
                 UPDATE lagomorph_tasks
                 SET status = 'running',
                     started_at = now(),
-                    worker_id = $1
+                    worker_id = $1,
+                    last_heartbeat = now()
                 WHERE id = (
                     SELECT id FROM lagomorph_tasks
                     WHERE status = ANY($2::text[])
                     AND scheduled_at <= now()
-                    ORDER BY created_at
+                    ORDER BY priority DESC, created_at
                     FOR UPDATE SKIP LOCKED
                     LIMIT 1
                 )
@@ -172,6 +184,13 @@ class Storage:
                     error,
                 )
 
+    async def heartbeat(self, worker_id: str) -> None:
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE lagomorph_tasks SET last_heartbeat = now() WHERE worker_id = $1 AND status = 'running'",
+                worker_id,
+            )
+
     async def recover_stale_tasks(self, max_running_seconds: int = 300) -> list[uuid.UUID]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -230,6 +249,29 @@ class Storage:
                 if parsed is not None:
                     result.append(parsed)
             return result
+
+    async def list_failed_tasks(
+        self, queue_name: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        return await self.list_tasks(queue_name=queue_name, status="failed", limit=limit)
+
+    async def requeue_task(self, task_id: uuid.UUID) -> bool:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE lagomorph_tasks
+                SET status = 'pending',
+                    attempts = 0,
+                    error = NULL,
+                    scheduled_at = now(),
+                    started_at = NULL,
+                    completed_at = NULL,
+                    worker_id = NULL
+                WHERE id = $1 AND status = 'failed'
+                """,
+                task_id,
+            )
+            return result != "UPDATE 0"
 
     async def queue_stats(self) -> list[dict[str, Any]]:
         async with self.pool.acquire() as conn:

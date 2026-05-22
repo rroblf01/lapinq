@@ -1,3 +1,3 @@
-from lagomorph.client import TaskQueue
+from lagomorph.client import AsyncTaskQueue, TaskQueue
 
-__all__ = ["TaskQueue"]
+__all__ = ["AsyncTaskQueue", "TaskQueue"]
