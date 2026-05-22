@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS lagomorph_tasks (
 
 ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
 ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
+ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status
     ON lagomorph_tasks(status, created_at);
@@ -96,15 +97,18 @@ class Storage:
         scheduled_at: Any = None,
         max_retries: int = 3,
         priority: int = 0,
-    ) -> uuid.UUID:
+        ttl_seconds: int | None = None,
+    ) -> uuid.UUID | None:
+        if ttl_seconds == 0:
+            return None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO lagomorph_tasks
                     (task_name, queue_name, module_path, args, kwargs, status,
-                     scheduled_at, max_retries, priority)
+                     scheduled_at, max_retries, priority, ttl_seconds)
                 VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, 'pending',
-                        COALESCE($6::timestamptz, now()), $7, $8)
+                        COALESCE($6::timestamptz, now()), $7, $8, $9)
                 RETURNING id
                 """,
                 task_name,
@@ -115,6 +119,7 @@ class Storage:
                 scheduled_at,
                 max_retries,
                 priority,
+                ttl_seconds,
             )
             return row["id"]
 
@@ -317,6 +322,21 @@ class Storage:
                 task_id,
             )
             return result != "DELETE 0"
+
+    async def cleanup_expired_tasks(self) -> int:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                DELETE FROM lagomorph_tasks
+                WHERE ttl_seconds IS NOT NULL
+                  AND ttl_seconds > 0
+                  AND created_at + (ttl_seconds::text || ' seconds')::interval < now()
+                """
+            )
+            count = int(result.split()[-1]) if result else 0
+            if count:
+                logger.info("Cleaned up %d expired tasks", count)
+            return count
 
 
 def _retry_backoff_seconds(attempt: int) -> int:

@@ -14,6 +14,7 @@ def _build_payload(
     scheduled_at: str | None,
     max_retries: int | None,
     priority: int,
+    ttl_seconds: int | None,
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> dict[str, Any]:
@@ -28,6 +29,8 @@ def _build_payload(
         payload["scheduled_at"] = scheduled_at
     if max_retries is not None:
         payload["max_retries"] = max_retries
+    if ttl_seconds is not None:
+        payload["ttl_seconds"] = ttl_seconds
     payload["priority"] = priority
     return payload
 
@@ -59,12 +62,13 @@ class TaskQueue:
         scheduled_at: str | None = None,
         max_retries: int | None = None,
         priority: int = 0,
+        ttl_seconds: int | None = None,
     ) -> Any:
         if callable(name):
-            return self._register(name, None, self.queue_name, None, None, 0)
+            return self._register(name, None, self.queue_name, None, None, 0, None)
 
         def decorator(func: Any) -> Any:
-            return self._register(func, name, queue_name, scheduled_at, max_retries, priority)
+            return self._register(func, name, queue_name, scheduled_at, max_retries, priority, ttl_seconds)
 
         return decorator
 
@@ -76,6 +80,7 @@ class TaskQueue:
         scheduled_at: str | None,
         max_retries: int | None,
         priority: int,
+        ttl_seconds: int | None,
     ) -> Any:
         task_name = name if name is not None else func.__name__
         qualified_name, module_path = _resolve_module(func)
@@ -83,7 +88,9 @@ class TaskQueue:
         q = task_queue if task_queue is not None else self.queue_name
 
         def queue(*args: Any, **kwargs: Any) -> httpx.Response:
-            payload = _build_payload(func, task_name, q, module_path, scheduled_at, max_retries, priority, args, kwargs)
+            payload = _build_payload(
+                func, task_name, q, module_path, scheduled_at, max_retries, priority, ttl_seconds, args, kwargs,
+            )
             return self._client.post(
                 f"{self.server_url}/api/enqueue",
                 json=payload,
@@ -117,12 +124,13 @@ class AsyncTaskQueue:
         scheduled_at: str | None = None,
         max_retries: int | None = None,
         priority: int = 0,
+        ttl_seconds: int | None = None,
     ) -> Any:
         if callable(name):
-            return self._register(name, None, self.queue_name, None, None, 0)
+            return self._register(name, None, self.queue_name, None, None, 0, None)
 
         def decorator(func: Any) -> Any:
-            return self._register(func, name, queue_name, scheduled_at, max_retries, priority)
+            return self._register(func, name, queue_name, scheduled_at, max_retries, priority, ttl_seconds)
 
         return decorator
 
@@ -134,6 +142,7 @@ class AsyncTaskQueue:
         scheduled_at: str | None,
         max_retries: int | None,
         priority: int,
+        ttl_seconds: int | None,
     ) -> Any:
         task_name = name if name is not None else func.__name__
         qualified_name, module_path = _resolve_module(func)
@@ -141,7 +150,9 @@ class AsyncTaskQueue:
         q = task_queue if task_queue is not None else self.queue_name
 
         async def aqueue(*args: Any, **kwargs: Any) -> httpx.Response:
-            payload = _build_payload(func, task_name, q, module_path, scheduled_at, max_retries, priority, args, kwargs)
+            payload = _build_payload(
+                func, task_name, q, module_path, scheduled_at, max_retries, priority, ttl_seconds, args, kwargs,
+            )
             return await self._client.post(
                 f"{self.server_url}/api/enqueue",
                 json=payload,

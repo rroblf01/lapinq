@@ -23,6 +23,7 @@ def main() -> None:
     server_parser.add_argument("--worker-concurrency", type=int, default=4)
     server_parser.add_argument("--worker-poll-interval", type=float, default=0.1)
     server_parser.add_argument("--worker-timeout", type=int, default=300)
+    server_parser.add_argument("--cleanup-interval", type=float, default=0)
 
     execute_parser = subparsers.add_parser("execute", help="Execute a task (internal)")
     execute_parser.add_argument("task_id", help="Task ID to execute")
@@ -59,6 +60,7 @@ def _run_server(args: argparse.Namespace) -> None:
         worker_concurrency=args.worker_concurrency,
         worker_poll_interval=args.worker_poll_interval,
         worker_timeout=args.worker_timeout,
+        cleanup_interval=args.cleanup_interval,
     )
     import uvicorn
 

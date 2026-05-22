@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -21,6 +22,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from lagomorph.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
 from lagomorph.storage import Storage
 from lagomorph.worker import run_worker_inline
+
+logger = logging.getLogger("lagomorph.server")
 
 MAX_PAYLOAD_SIZE = 1024 * 100
 
@@ -72,6 +75,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._requests = dict(sorted_ips[:self.max_clients])
 
 
+async def _cleanup_loop(storage: Storage, interval: float) -> None:
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await storage.cleanup_expired_tasks()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("Cleanup loop error")
+
+
 def create_app(
     database_url: str = "postgresql://localhost:5432/lagomorph",
     api_key: str | None = None,
@@ -80,6 +94,7 @@ def create_app(
     worker_concurrency: int = 4,
     worker_poll_interval: float = 0.1,
     worker_timeout: int = 300,
+    cleanup_interval: float = 0,
 ) -> Starlette:
     routes = [
         Route("/", dashboard, methods=["GET"]),
@@ -101,21 +116,27 @@ def create_app(
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
         storage = await Storage.create(database_url)
         app.state.storage = storage
-        worker_task = None
+        bg_tasks: list[asyncio.Task[None]] = []
         if worker:
-            worker_task = asyncio.create_task(
-                run_worker_inline(
-                    storage,
-                    concurrency=worker_concurrency,
-                    poll_interval=worker_poll_interval,
-                    task_timeout=worker_timeout,
+            bg_tasks.append(
+                asyncio.create_task(
+                    run_worker_inline(
+                        storage,
+                        concurrency=worker_concurrency,
+                        poll_interval=worker_poll_interval,
+                        task_timeout=worker_timeout,
+                    )
                 )
             )
+        if cleanup_interval > 0:
+            bg_tasks.append(
+                asyncio.create_task(_cleanup_loop(storage, cleanup_interval))
+            )
         yield
-        if worker_task:
-            worker_task.cancel()
+        for t in bg_tasks:
+            t.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await worker_task
+                await t
         await storage.close()
 
     middleware: list[Middleware] = [
@@ -153,6 +174,12 @@ async def enqueue(request: Request) -> JSONResponse:
     scheduled_at = body.get("scheduled_at")
     max_retries = body.get("max_retries", 3)
     priority = body.get("priority", 0)
+    ttl_seconds = body.get("ttl_seconds")
+    if ttl_seconds is not None:
+        try:
+            ttl_seconds = int(ttl_seconds)
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "invalid ttl_seconds"}, status_code=400)
 
     if not task_name:
         return JSONResponse({"error": "task_name is required"}, status_code=400)
@@ -176,7 +203,10 @@ async def enqueue(request: Request) -> JSONResponse:
         scheduled_at=scheduled_at,
         max_retries=max_retries,
         priority=priority,
+        ttl_seconds=ttl_seconds,
     )
+    if task_id is None:
+        return JSONResponse({"task_id": None, "ttl_seconds": 0}, status_code=201)
     return JSONResponse({"task_id": str(task_id)}, status_code=201)
 
 
