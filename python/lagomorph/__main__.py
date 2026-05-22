@@ -19,6 +19,10 @@ def main() -> None:
     server_parser.add_argument("--database-url", default=None)
     server_parser.add_argument("--concurrency", type=int, default=4)
     server_parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
+    server_parser.add_argument("--worker", action="store_true")
+    server_parser.add_argument("--worker-concurrency", type=int, default=4)
+    server_parser.add_argument("--worker-poll-interval", type=float, default=0.1)
+    server_parser.add_argument("--worker-timeout", type=int, default=300)
 
     execute_parser = subparsers.add_parser("execute", help="Execute a task (internal)")
     execute_parser.add_argument("task_id", help="Task ID to execute")
@@ -47,7 +51,15 @@ def _run_server(args: argparse.Namespace) -> None:
     api_key = os.environ.get("LAGOMORPH_API_KEY")
     rate_limit_str = os.environ.get("LAGOMORPH_RATE_LIMIT", "0")
     rate_limit = int(rate_limit_str) if rate_limit_str.isdigit() else 0
-    app = create_app(database_url=database_url, api_key=api_key, rate_limit=rate_limit)
+    app = create_app(
+        database_url=database_url,
+        api_key=api_key,
+        rate_limit=rate_limit,
+        worker=args.worker,
+        worker_concurrency=args.worker_concurrency,
+        worker_poll_interval=args.worker_poll_interval,
+        worker_timeout=args.worker_timeout,
+    )
     import uvicorn
 
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)

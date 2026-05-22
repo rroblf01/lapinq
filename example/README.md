@@ -5,15 +5,13 @@ A production-like demo with FastAPI + PostgreSQL + Lagomorph.
 ## Architecture
 
 ```
-Browser ──► FastAPI (:8000) ──► Lagomorph Server (:8001) ──► PostgreSQL (:5432)
-                                      │
-                               Lagomorph Worker
+Browser ──► FastAPI (:8000) ──► Lagomorph Server + Worker (:8001) ──► PostgreSQL (:5432)
 ```
 
 1. Browser submits a task via the FastAPI form.
 2. FastAPI enqueues it via `AsyncTaskQueue` → HTTP → Lagomorph Server.
 3. Lagomorph Server writes the task to PostgreSQL.
-4. Lagomorph Worker picks it up, imports `app.tasks`, executes the function, and writes the result back.
+4. The built-in inline worker picks it up, imports `app.tasks`, executes the function, and writes the result back — all in the same process.
 
 ## Run
 

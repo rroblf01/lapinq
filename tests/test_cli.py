@@ -63,6 +63,36 @@ def test_cli_worker_parses_custom():
         assert args.task_timeout == 600
 
 
+def test_cli_server_with_worker_flags():
+    with mock.patch.object(
+        sys, "argv",
+        [
+            "lagomorph", "server", "--worker",
+            "--worker-concurrency", "8",
+            "--worker-poll-interval", "0.5",
+            "--worker-timeout", "600",
+        ],
+    ), mock.patch("lagomorph.__main__._run_server") as mock_run:
+        main()
+        args = mock_run.call_args[0][0]
+        assert args.worker is True
+        assert args.worker_concurrency == 8
+        assert args.worker_poll_interval == 0.5
+        assert args.worker_timeout == 600
+
+
+def test_cli_server_worker_defaults():
+    with mock.patch.object(sys, "argv", ["lagomorph", "server", "--worker"]), mock.patch(
+        "lagomorph.__main__._run_server"
+    ) as mock_run:
+        main()
+        args = mock_run.call_args[0][0]
+        assert args.worker is True
+        assert args.worker_concurrency == 4
+        assert args.worker_poll_interval == 0.1
+        assert args.worker_timeout == 300
+
+
 def test_cli_requires_command():
     with mock.patch.object(sys, "argv", ["lagomorph"]):
         try:

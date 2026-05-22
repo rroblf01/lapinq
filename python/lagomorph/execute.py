@@ -1,17 +1,39 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 import logging
 import os
 import sys
 import uuid
+from typing import Any
 
 import asyncpg
 
 from lagomorph.storage import json_loads
 
 logger = logging.getLogger("lagomorph.execute")
+
+
+async def execute_task_inline(task_data: dict[str, Any]) -> Any:
+    module_path = task_data["module_path"]
+    task_name = task_data["task_name"]
+    args = task_data.get("args") or []
+    kwargs = task_data.get("kwargs") or {}
+
+    module = importlib.import_module(module_path)
+    func_name = task_name.rsplit(".", 1)[-1]
+    func = getattr(module, func_name, None)
+
+    if func is None:
+        raise ImportError(f"Function {task_name} not found in module {module_path}")
+
+    if inspect.iscoroutinefunction(func):
+        return await func(*args, **kwargs)
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
 
 async def execute_task(task_id: str) -> None:

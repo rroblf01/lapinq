@@ -99,6 +99,68 @@ async def run_worker(
         logger.info("Worker %s stopped", worker_id)
 
 
+async def run_worker_inline(
+    storage: Storage,
+    concurrency: int = 4,
+    poll_interval: float = 0.1,
+    task_timeout: int = 300,
+) -> None:
+    from lagomorph.execute import execute_task_inline
+
+    worker_id = str(uuid.uuid4())
+    semaphore = asyncio.Semaphore(concurrency)
+    shutdown_event = asyncio.Event()
+    active_tasks: set[asyncio.Task[None]] = set()
+
+    heartbeat_task = asyncio.create_task(_heartbeat_loop(storage, worker_id, shutdown_event))
+
+    async def process_task(task_data: dict) -> None:
+        async with semaphore:
+            task_id = task_data["id"]
+            try:
+                result = await asyncio.wait_for(
+                    execute_task_inline(task_data),
+                    timeout=task_timeout,
+                )
+                logger.info("Task %s completed: %s", task_id, result)
+                await storage.complete_task(task_id, result=str(result))
+            except TimeoutError:
+                logger.warning("Task %s timed out after %ds", task_id, task_timeout)
+                await storage.fail_task(task_id, error="timed out")
+            except Exception:
+                logger.exception("Task %s failed", task_id)
+                with contextlib.suppress(Exception):
+                    await storage.fail_task(task_id, error="unexpected worker error")
+
+    logger.info(
+        "Inline worker %s starting (concurrency=%d, poll_interval=%.1fs, timeout=%ds)",
+        worker_id,
+        concurrency,
+        poll_interval,
+        task_timeout,
+    )
+
+    try:
+        while not shutdown_event.is_set():
+            task_data = await storage.claim_task(worker_id)
+            if task_data is not None:
+                t = asyncio.create_task(process_task(task_data))
+                active_tasks.add(t)
+                t.add_done_callback(active_tasks.discard)
+            else:
+                await asyncio.sleep(poll_interval)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat_task
+        logger.info("Inline worker %s shutting down, waiting for %d active tasks...", worker_id, len(active_tasks))
+        if active_tasks:
+            await asyncio.wait(active_tasks, timeout=30)
+        logger.info("Inline worker %s stopped", worker_id)
+
+
 async def _heartbeat_loop(storage: Storage, worker_id: str, shutdown_event: asyncio.Event) -> None:
     while not shutdown_event.is_set():
         try:

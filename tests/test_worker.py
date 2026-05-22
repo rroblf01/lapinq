@@ -171,6 +171,56 @@ async def test_heartbeat_error_does_not_crash_loop(monkeypatch):
         await storage.close()
 
 
+async def test_run_worker_inline_processes_task(monkeypatch):
+    import lagomorph.worker as wmod
+
+    storage = await Storage.create(DATABASE_URL)
+    try:
+        task_id = await storage.enqueue("add", "test_inline", "tests.test_execute", args=[3, 4])
+
+        worker_task = asyncio.create_task(
+            wmod.run_worker_inline(storage, concurrency=2, poll_interval=0.05, task_timeout=30)
+        )
+
+        await asyncio.sleep(0.5)
+
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
+
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "completed"
+        assert task["result"] == "7"
+    finally:
+        await storage.close()
+
+
+async def test_run_worker_inline_handles_timeout(monkeypatch):
+    import lagomorph.worker as wmod
+
+    storage = await Storage.create(DATABASE_URL)
+    try:
+        task_id = await storage.enqueue("slow_func", "test_inline_timeout", "tests.test_worker", max_retries=0)
+
+        worker_task = asyncio.create_task(
+            wmod.run_worker_inline(storage, concurrency=1, poll_interval=0.05, task_timeout=1)
+        )
+
+        await asyncio.sleep(1.5)
+
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
+
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "failed"
+        assert task["error"] == "timed out"
+    finally:
+        await storage.close()
+
+
 async def test_run_worker_loop_processes_task(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
 

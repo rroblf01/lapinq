@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import httpx
@@ -477,6 +478,36 @@ async def test_list_failed_tasks_endpoint():
             assert str(task_id) in ids
     finally:
         await storage.close()
+
+
+async def test_create_app_with_worker_flag():
+    app = create_app(database_url=DATABASE_URL, worker=True)
+    assert app is not None
+
+
+async def test_inline_worker_processes_through_server():
+    from starlette.testclient import TestClient
+
+    app = create_app(database_url=DATABASE_URL, worker=True, worker_poll_interval=0.05)
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/enqueue",
+            json={
+                "task_name": "add",
+                "queue_name": "test_inline_srv",
+                "module_path": "tests.test_execute",
+                "args": [5, 7],
+                "max_retries": 0,
+            },
+        )
+        assert resp.status_code == 201
+        task_id = resp.json()["task_id"]
+
+        await asyncio.sleep(0.5)
+
+        resp2 = client.get(f"/api/tasks/{task_id}")
+        assert resp2.status_code == 200
+        assert resp2.json()["status"] == "completed"
 
 
 async def test_requeue_endpoint():

@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 
+from lagomorph.execute import execute_task_inline
 from lagomorph.storage import Storage
 
 DATABASE_URL = "postgresql://postgres:test@localhost:5432/lagomorph_test"
@@ -67,6 +68,56 @@ async def test_execute_task_not_found():
     _, stderr = await proc.communicate()
     assert proc.returncode == 1
     assert "not found" in stderr.decode()
+
+
+async def test_execute_inline_sync():
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "add",
+        "args": [10, 20],
+        "kwargs": {},
+    }
+    result = await execute_task_inline(task_data)
+    assert result == 30
+
+
+async def test_execute_inline_async():
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "async_echo",
+        "args": ["world"],
+        "kwargs": {},
+    }
+    result = await execute_task_inline(task_data)
+    assert result == "echo:world"
+
+
+async def test_execute_inline_missing_function():
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "nonexistent_func",
+        "args": [],
+        "kwargs": {},
+    }
+    try:
+        await execute_task_inline(task_data)
+        raise AssertionError("expected ImportError")
+    except ImportError:
+        pass
+
+
+async def test_execute_inline_function_raises():
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "fail_func",
+        "args": [],
+        "kwargs": {},
+    }
+    try:
+        await execute_task_inline(task_data)
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as e:
+        assert "expected failure" in str(e)
 
 
 async def test_execute_function_raises():

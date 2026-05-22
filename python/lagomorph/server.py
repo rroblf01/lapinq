@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -19,6 +20,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from lagomorph.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
 from lagomorph.storage import Storage
+from lagomorph.worker import run_worker_inline
 
 MAX_PAYLOAD_SIZE = 1024 * 100
 
@@ -74,6 +76,10 @@ def create_app(
     database_url: str = "postgresql://localhost:5432/lagomorph",
     api_key: str | None = None,
     rate_limit: int = 0,
+    worker: bool = False,
+    worker_concurrency: int = 4,
+    worker_poll_interval: float = 0.1,
+    worker_timeout: int = 300,
 ) -> Starlette:
     routes = [
         Route("/", dashboard, methods=["GET"]),
@@ -95,7 +101,21 @@ def create_app(
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
         storage = await Storage.create(database_url)
         app.state.storage = storage
+        worker_task = None
+        if worker:
+            worker_task = asyncio.create_task(
+                run_worker_inline(
+                    storage,
+                    concurrency=worker_concurrency,
+                    poll_interval=worker_poll_interval,
+                    task_timeout=worker_timeout,
+                )
+            )
         yield
+        if worker_task:
+            worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await worker_task
         await storage.close()
 
     middleware: list[Middleware] = [
