@@ -162,7 +162,37 @@ async def test_rust_executor_fallback_to_python_for_async():
     assert result == "echo:rust_fallback"
 
 
-async def test_execute_function_raises():
+async def test_execute_inline_missing_module():
+    from lagomorph.execute import execute_task_inline
+
+    task_data = {
+        "module_path": "tests.does_not_exist",
+        "task_name": "anything",
+        "args": [],
+        "kwargs": {},
+    }
+    try:
+        await execute_task_inline(task_data)
+        raise AssertionError("expected ModuleNotFoundError")
+    except ModuleNotFoundError:
+        pass
+
+
+async def test_execute_inline_missing_args_key():
+    from lagomorph.execute import execute_task_inline
+
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "fail_func",
+    }
+    try:
+        await execute_task_inline(task_data)
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as e:
+        assert "expected failure" in str(e)
+
+
+async def test_execute_inline_function_raises():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("fail_func", "default", "tests.test_execute")

@@ -531,3 +531,191 @@ async def test_requeue_endpoint():
             assert resp2.json()["status"] == "requeued"
     finally:
         await storage.close()
+
+
+async def test_enqueue_with_ttl_seconds():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(
+                "/api/enqueue",
+                json={"task_name": "ttl_task", "queue_name": "q1", "module_path": "m1", "ttl_seconds": 7200},
+            )
+            assert resp.status_code == 201
+            task_id = uuid.UUID(resp.json()["task_id"])
+            task = await storage.get_task(task_id)
+            assert task is not None
+            assert task["ttl_seconds"] == 7200
+    finally:
+        await storage.close()
+
+
+async def test_enqueue_ttl_zero():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(
+                "/api/enqueue",
+                json={"task_name": "volatile", "queue_name": "q1", "module_path": "m1", "ttl_seconds": 0},
+            )
+            assert resp.status_code == 201
+            data = resp.json()
+            assert data["task_id"] is None
+            assert data["ttl_seconds"] == 0
+    finally:
+        await storage.close()
+
+
+async def test_enqueue_invalid_ttl():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(
+                "/api/enqueue",
+                json={"task_name": "bad_ttl", "queue_name": "q1", "module_path": "m1", "ttl_seconds": "not-a-number"},
+            )
+            assert resp.status_code == 400
+            assert "ttl_seconds" in resp.json()["error"]
+    finally:
+        await storage.close()
+
+
+async def test_requeue_invalid_uuid():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post("/api/tasks/not-a-uuid/requeue", json={})
+            assert resp.status_code == 400
+    finally:
+        await storage.close()
+
+
+async def test_list_tasks_with_status():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            await client.post(
+                "/api/enqueue",
+                json={"task_name": "t1", "queue_name": "q1", "module_path": "m1"},
+            )
+            t2 = await storage.enqueue("t2", "q1", "m1")
+            await storage.complete_task(t2)
+
+            resp = await client.get("/api/tasks?status=pending")
+            assert resp.status_code == 200
+            names = [t["task_name"] for t in resp.json()]
+            assert "t1" in names
+            assert "t2" not in names
+
+            resp2 = await client.get("/api/tasks?status=completed")
+            names2 = [t["task_name"] for t in resp2.json()]
+            assert "t2" in names2
+    finally:
+        await storage.close()
+
+
+async def test_list_failed_tasks_with_queue_filter():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            t1 = await storage.enqueue("f1", "qa", "m1", max_retries=0)
+            t2 = await storage.enqueue("f2", "qb", "m1", max_retries=0)
+            await storage.claim_task("w1", statuses=("pending",))
+            for tid in (t1, t2):
+                await storage.fail_task(tid, error="err")
+
+            resp = await client.get("/api/tasks/failed?queue=qa")
+            assert resp.status_code == 200
+            assert len(resp.json()) == 1
+            assert resp.json()[0]["task_name"] == "f1"
+    finally:
+        await storage.close()
+
+
+async def test_websocket_queue_filter():
+    from starlette.testclient import TestClient
+
+    app = create_app(database_url=DATABASE_URL)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as ws:
+            data = ws.receive_json()
+            assert "cards" in data
+            assert "table" in data
+
+            ws.send_json({"queue": "nonexistent"})
+            data2 = ws.receive_json()
+            assert data2 is not None
+
+
+async def test_metrics_with_multiple_queues():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            await client.post(
+                "/api/enqueue",
+                json={"task_name": "m1", "queue_name": "qa", "module_path": "mp"},
+            )
+            await client.post(
+                "/api/enqueue",
+                json={"task_name": "m2", "queue_name": "qb", "module_path": "mp"},
+            )
+            resp = await client.get("/metrics")
+            assert resp.status_code == 200
+            assert 'queue="qa"' in resp.text
+            assert 'queue="qb"' in resp.text
+    finally:
+        await storage.close()
+
+
+async def test_websocket_id_filter_partial():
+    from starlette.testclient import TestClient
+
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        tid = await storage.enqueue("id_filter_test", "q1", "tests.test_execute")
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws") as ws:
+                ws.receive_json()
+                prefix = str(tid)[:8]
+                ws.send_json({"id": prefix})
+                data = ws.receive_json()
+                assert "id_filter_test" in data["table"]
+    finally:
+        await storage.close()

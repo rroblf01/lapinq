@@ -180,3 +180,53 @@ async def test_async_task_no_parens():
             assert await no_parens() == "done"
     finally:
         await atq.close()
+
+
+def test_build_payload_ttl_seconds():
+    from lagomorph.client import _build_payload
+
+    payload = _build_payload(
+        lambda: None, "fn", "q", "m", None, None, 0, 3600, (1,), {},
+    )
+    assert payload["ttl_seconds"] == 3600
+
+    payload_no_ttl = _build_payload(
+        lambda: None, "fn", "q", "m", None, None, 0, None, (1,), {},
+    )
+    assert "ttl_seconds" not in payload_no_ttl
+
+
+def test_build_payload_max_retries_omitted():
+    from lagomorph.client import _build_payload
+
+    payload = _build_payload(
+        lambda: None, "fn", "q", "m", None, None, 0, None, (), {},
+    )
+    assert "max_retries" not in payload
+
+
+def test_task_decorator_explicit_ttl(task_queue):
+    @task_queue.task(name="ttl_dec", ttl_seconds=86400)
+    def ttl_fn():
+        pass
+
+    assert ttl_fn.task_name == "ttl_dec"
+    with mock.patch.object(task_queue._client, "post") as mock_post:
+        mock_post.return_value = httpx.Response(201, json={"task_id": "x"})
+        ttl_fn.queue()
+        call_payload = mock_post.call_args[1]["json"]
+        assert call_payload["ttl_seconds"] == 86400
+
+
+def test_task_name_attribute(task_queue):
+    @task_queue.task(name="custom_name")
+    def my_func():
+        pass
+
+    assert my_func.task_name == "custom_name"
+
+    @task_queue.task
+    def another_func():
+        pass
+
+    assert another_func.task_name == "another_func"

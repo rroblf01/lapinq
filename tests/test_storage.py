@@ -289,3 +289,110 @@ async def test_enqueue_with_max_retries():
         assert task["max_retries"] == 5
     finally:
         await storage.close()
+
+
+async def test_enqueue_with_ttl():
+    storage = await make_storage()
+    try:
+        task_id = await storage.enqueue("ttl_task", "q1", "m1", ttl_seconds=3600)
+        assert task_id is not None
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["ttl_seconds"] == 3600
+    finally:
+        await storage.close()
+
+
+async def test_enqueue_ttl_zero_returns_none():
+    storage = await make_storage()
+    try:
+        task_id = await storage.enqueue("volatile", "q1", "m1", ttl_seconds=0)
+        assert task_id is None
+    finally:
+        await storage.close()
+
+
+async def test_cleanup_expired_tasks():
+    import asyncio
+
+    storage = await make_storage()
+    try:
+        tid1 = await storage.enqueue("exp1", "q1", "m1", ttl_seconds=0)
+        tid2 = await storage.enqueue("keep", "q1", "m1")
+        tid3 = await storage.enqueue("exp3", "q1", "m1", ttl_seconds=3600)
+        assert tid1 is None
+
+        tid_exp = await storage.enqueue("exp_soon", "q1", "m1", ttl_seconds=1)
+
+        await asyncio.sleep(1.5)
+
+        count = await storage.cleanup_expired_tasks()
+        assert count >= 1
+
+        after = await storage.get_task(tid_exp)
+        assert after is None
+
+        kept = await storage.get_task(tid2)
+        assert kept is not None
+        assert await storage.get_task(tid3) is not None
+    finally:
+        await storage.close()
+
+
+async def test_cleanup_no_expired_tasks():
+    storage = await make_storage()
+    try:
+        await storage.enqueue("perm1", "q1", "m1")
+        await storage.enqueue("perm2", "q2", "m2", ttl_seconds=None)
+        count = await storage.cleanup_expired_tasks()
+        assert count == 0
+    finally:
+        await storage.close()
+
+
+async def test_list_tasks_with_status_filter():
+    storage = await make_storage()
+    try:
+        await storage.enqueue("a", "q1", "m1")
+        tid2 = await storage.enqueue("b", "q1", "m1")
+        await storage.complete_task(tid2)
+
+        pending = await storage.list_tasks(status="pending")
+        completed = await storage.list_tasks(status="completed")
+
+        assert len(pending) == 1
+        assert pending[0]["task_name"] == "a"
+        assert len(completed) == 1
+        assert completed[0]["task_name"] == "b"
+    finally:
+        await storage.close()
+
+
+async def test_list_tasks_with_queue_and_status():
+    storage = await make_storage()
+    try:
+        tid = await storage.enqueue("only_q2", "q2", "m1")
+        await storage.enqueue("q1_pending", "q1", "m1")
+        await storage.complete_task(tid)
+
+        result = await storage.list_tasks(queue_name="q2", status="completed")
+        assert len(result) == 1
+        assert result[0]["task_name"] == "only_q2"
+
+        result2 = await storage.list_tasks(queue_name="q1", status="completed")
+        assert len(result2) == 0
+    finally:
+        await storage.close()
+
+
+async def test_list_tasks_with_limit():
+    storage = await make_storage()
+    try:
+        for i in range(5):
+            await storage.enqueue(f"t{i}", "q1", "m1")
+        all_tasks = await storage.list_tasks(limit=10)
+        limited = await storage.list_tasks(limit=2)
+        assert len(all_tasks) == 5
+        assert len(limited) == 2
+    finally:
+        await storage.close()

@@ -228,3 +228,83 @@ async def test_dashboard_html_endpoint():
             assert "text/html" in resp2.headers["content-type"]
     finally:
         await storage.close()
+
+
+async def test_empty_queues_html():
+    from lagomorph.dashboard import _queue_cards_html
+
+    html = _queue_cards_html([])
+    assert "No queues yet" in html
+    assert "empty" in html
+
+
+async def test_empty_tasks_html():
+    from lagomorph.dashboard import _tasks_table_html
+
+    html = _tasks_table_html([])
+    assert "No tasks found" in html
+
+
+async def test_tasks_html_unknown_status():
+    from lagomorph.dashboard import _tasks_table_html
+
+    tasks = [{"id": "00000000-0000-0000-0000-000000000000", "status": "unknown-status"}]
+    html = _tasks_table_html(tasks)
+    assert "badge-pending" in html
+    assert "unknown-status" in html
+
+
+async def test_tasks_html_args_str():
+    from lagomorph.dashboard import _tasks_table_html
+
+    tasks = [{
+        "id": "00000000-0000-0000-0000-000000000000",
+        "task_name": "t",
+        "queue_name": "q",
+        "status": "pending",
+        "args": [1, 2],
+        "kwargs": {"x": "y"},
+    }]
+    html = _tasks_table_html(tasks)
+    assert "1, 2" in html
+    assert "x=y" in html
+
+
+async def test_tasks_html_long_result_truncated():
+    from lagomorph.dashboard import _tasks_table_html
+
+    tasks = [{
+        "id": "00000000-0000-0000-0000-000000000000",
+        "task_name": "t",
+        "queue_name": "q",
+        "status": "completed",
+        "result": "x" * 100,
+    }]
+    html = _tasks_table_html(tasks)
+    assert "..." in html
+    assert ("x" * 60 + "...") in html
+
+
+async def test_dashboard_page_filters_present():
+    from lagomorph.dashboard import dashboard_page
+    from lagomorph.storage import Storage
+
+    storage = await Storage.create(DATABASE_URL)
+    try:
+        await storage.enqueue("test", "test_q", "m1")
+        stats = await storage.queue_stats()
+        html = dashboard_page(stats).body.decode()
+
+        assert 'id="queue-filter"' in html
+        assert 'id="status-filter"' in html
+        assert 'id="id-filter"' in html
+        assert 'id="args-filter"' in html
+        assert 'id="result-filter"' in html
+        assert 'id="error-filter"' in html
+        assert "Pending" in html
+        assert "Running" in html
+        assert "Completed" in html
+        assert "Failed" in html
+        assert "WebSocket" in html or "ws.onmessage" in html
+    finally:
+        await storage.close()
