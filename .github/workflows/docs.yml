@@ -24,7 +24,7 @@ jobs:
           python-version: "3.14"
       - name: Install dependencies
         run: |
-          pip install mkdocs mkdocs-material
+          pip install mkdocs mkdocs-material mkdocs-static-i18n
       - name: Build docs
         run: mkdocs build
       - name: Upload artifact

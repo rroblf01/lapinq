@@ -20,7 +20,6 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-    - navigation.instant
     - navigation.tracking
     - navigation.sections
     - navigation.expand
@@ -29,14 +28,14 @@ theme:
     repo: fontawesome/brands/github
 
 nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Usage: usage.md
-  - Deployment: deployment.md
+  - Home: en/index.md
+  - Getting Started: en/getting-started.md
+  - Usage: en/usage.md
+  - Deployment: en/deployment.md
   - API Reference:
-    - Client: api/client.md
-    - Server: api/server.md
-    - Worker: api/worker.md
+    - Client: en/api/client.md
+    - Server: en/api/server.md
+    - Worker: en/api/worker.md
 
 markdown_extensions:
   - pymdownx.highlight:
@@ -51,3 +50,11 @@ markdown_extensions:
 
 plugins:
   - search
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          name: English
+          default: true
+        - locale: es
+          name: Español
