@@ -15,6 +15,13 @@ from lagomorph.storage import json_loads
 
 logger = logging.getLogger("lagomorph.execute")
 
+try:
+    from lagomorph._worker import execute_task_inline as _execute_rust
+    logger.info("Rust task executor available")
+except ImportError:
+    _execute_rust = None
+    logger.debug("Rust task executor not available, using Python")
+
 
 async def execute_task_inline(task_data: dict[str, Any]) -> Any:
     module_path = task_data["module_path"]
@@ -31,6 +38,16 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
 
     if inspect.iscoroutinefunction(func):
         return await func(*args, **kwargs)
+
+    if _execute_rust is not None:
+        try:
+            import json
+
+            return json.loads(_execute_rust(task_data))
+        except TypeError:
+            pass
+        except Exception:
+            pass
 
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))

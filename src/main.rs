@@ -1,12 +1,12 @@
 use clap::Parser;
 use log::{error, info, warn};
-use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::Semaphore;
-use tokio_postgres::{connect, NoTls};
 use uuid::Uuid;
+
+use _worker::{claim_task, complete_task_in_db, connect_db, ensure_schema, fail_task_in_db, Task};
 
 #[derive(Parser, Debug)]
 #[command(name = "lagomorph-worker", version)]
@@ -24,20 +24,6 @@ struct Args {
     task_timeout_secs: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Task {
-    id: Uuid,
-    queue_name: String,
-    task_name: String,
-    module_path: String,
-    args: serde_json::Value,
-    kwargs: serde_json::Value,
-    status: String,
-    attempts: i32,
-    max_retries: i32,
-    priority: i32,
-}
-
 #[tokio::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -46,57 +32,11 @@ async fn main() {
 
     info!(
         "Worker {} starting (concurrency={}, poll_interval={}s, timeout={}s)",
-        worker_id, args.concurrency, args.poll_interval_secs, args.task_timeout_secs
+        worker_id, args.concurrency, args.poll_interval_secs, args.task_timeout_secs,
     );
 
-    let (client, connection) = connect(&args.database_url, NoTls)
-        .await
-        .expect("Failed to connect to PostgreSQL");
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            error!("PostgreSQL connection error: {}", e);
-        }
-    });
-
-    // Ensure schema exists
-    client
-        .batch_execute(
-            "
-        CREATE TABLE IF NOT EXISTS lagomorph_tasks (
-            id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            queue_name   TEXT NOT NULL,
-            task_name    TEXT NOT NULL,
-            module_path  TEXT NOT NULL,
-            args         JSONB NOT NULL DEFAULT '[]',
-            kwargs       JSONB NOT NULL DEFAULT '{}',
-            status       TEXT NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending','running','completed','failed')),
-            result       TEXT,
-            error        TEXT,
-            attempts     INT NOT NULL DEFAULT 0,
-            max_retries  INT NOT NULL DEFAULT 3,
-            priority     INT NOT NULL DEFAULT 0,
-            created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-            scheduled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            started_at   TIMESTAMPTZ,
-            completed_at TIMESTAMPTZ,
-            last_heartbeat TIMESTAMPTZ,
-            worker_id    TEXT
-        );
-        ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
-        ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
-        CREATE INDEX IF NOT EXISTS idx_tasks_status
-            ON lagomorph_tasks(status, created_at);
-        CREATE INDEX IF NOT EXISTS idx_tasks_scheduled
-            ON lagomorph_tasks(scheduled_at)
-            WHERE status = 'pending';
-        CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
-            ON lagomorph_tasks(priority DESC, created_at)
-            WHERE status = 'pending';
-        ",
-        )
-        .await
-        .expect("Failed to create schema");
+    let client = connect_db(&args.database_url).await;
+    ensure_schema(&client).await;
 
     let semaphore = Arc::new(Semaphore::new(args.concurrency));
     let client = Arc::new(client);
@@ -129,46 +69,6 @@ async fn main() {
                 warn!("Task {} failed: {}", task.id, e);
             }
         });
-    }
-}
-
-async fn claim_task(client: &tokio_postgres::Client, worker_id: &str) -> Result<Option<Task>, tokio_postgres::Error> {
-    let row = client
-        .query_opt(
-            "
-            UPDATE lagomorph_tasks
-            SET status = 'running',
-                started_at = now(),
-                worker_id = $1,
-                last_heartbeat = now()
-            WHERE id = (
-                SELECT id FROM lagomorph_tasks
-                WHERE status = 'pending'
-                AND scheduled_at <= now()
-                ORDER BY priority DESC, created_at
-                FOR UPDATE SKIP LOCKED
-                LIMIT 1
-            )
-            RETURNING id, queue_name, task_name, module_path, args, kwargs, status, attempts, max_retries, priority
-            ",
-            &[&worker_id],
-        )
-        .await?;
-
-    match row {
-        Some(r) => Ok(Some(Task {
-            id: r.get(0),
-            queue_name: r.get(1),
-            task_name: r.get(2),
-            module_path: r.get(3),
-            args: r.get(4),
-            kwargs: r.get(5),
-            status: r.get(6),
-            attempts: r.get(7),
-            max_retries: r.get(8),
-            priority: r.get(9),
-        })),
-        None => Ok(None),
     }
 }
 
@@ -213,18 +113,6 @@ async fn execute_task(
     }
 }
 
-fn retry_backoff_seconds(attempt: i32) -> i32 {
-    let backoffs = [10, 30, 60, 300, 600];
-    let idx = (attempt - 1) as usize;
-    if attempt <= 0 {
-        0
-    } else if idx >= backoffs.len() {
-        backoffs[backoffs.len() - 1]
-    } else {
-        backoffs[idx]
-    }
-}
-
 fn python_interpreter() -> String {
     std::env::var("LAGOMORPH_PYTHON").unwrap_or_else(|_| "python".to_string())
 }
@@ -250,80 +138,5 @@ async fn run_python_subprocess(task: &Task) -> Result<(String, String), (String,
         Ok((stdout.trim().to_string(), stderr.trim().to_string()))
     } else {
         Err((stderr.trim().to_string(), task.attempts, task.max_retries))
-    }
-}
-
-async fn complete_task_in_db(
-    client: &tokio_postgres::Client,
-    task_id: Uuid,
-    result: &str,
-) -> Result<(), tokio_postgres::Error> {
-    client
-        .execute(
-            "UPDATE lagomorph_tasks SET status = 'completed', result = $2, completed_at = now() WHERE id = $1",
-            &[&task_id, &result],
-        )
-        .await?;
-    Ok(())
-}
-
-async fn fail_task_in_db(
-    client: &tokio_postgres::Client,
-    task_id: Uuid,
-    error: &str,
-    attempts: i32,
-    max_retries: i32,
-) -> Result<(), String> {
-    let new_attempts = attempts + 1;
-    if new_attempts < max_retries {
-        let backoff = retry_backoff_seconds(new_attempts);
-        client
-            .execute(
-                "UPDATE lagomorph_tasks SET status = 'pending', attempts = $2, error = $3, \
-                 scheduled_at = now() + ($4::text || ' seconds')::interval, started_at = NULL, worker_id = NULL WHERE id = $1",
-                &[&task_id, &new_attempts, &error, &backoff.to_string()],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-    } else {
-        client
-            .execute(
-                "UPDATE lagomorph_tasks SET status = 'failed', attempts = $2, error = $3, completed_at = now() WHERE id = $1",
-                &[&task_id, &new_attempts, &error],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_uuid_generation() {
-        let id = Uuid::new_v4();
-        assert_ne!(id.to_string().len(), 0);
-    }
-
-    #[test]
-    fn test_task_serialization() {
-        let task = Task {
-            id: Uuid::new_v4(),
-            queue_name: "test".into(),
-            task_name: "test_fn".into(),
-            module_path: "test_module".into(),
-            args: serde_json::json!([1, 2, 3]),
-            kwargs: serde_json::json!({"key": "value"}),
-            status: "pending".into(),
-            attempts: 0,
-            max_retries: 3,
-            priority: 0,
-        };
-        let json = serde_json::to_string(&task).unwrap();
-        let deserialized: Task = serde_json::from_str(&json).unwrap();
-        assert_eq!(task.id, deserialized.id);
-        assert_eq!(task.task_name, deserialized.task_name);
     }
 }
