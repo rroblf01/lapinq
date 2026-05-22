@@ -151,11 +151,12 @@ uv run pytest
 - [x] `fail_task()` should store/log the error message, not ignore it
 - [x] Add missing `dashboard.png` screenshot or remove the broken reference
 
-### Phase 1 — Core reliability
-- [ ] **Retries with backoff**: re-enqueue on failure with `attempts` counter and `max_retries`
-- [ ] **Stale task reaper**: reclaim tasks stuck in `running` after worker death
-- [ ] **Task history**: keep completed/failed tasks instead of deleting them
-- [ ] **Result storage**: persist task return values and error messages
+### Phase 1 — Core reliability ✅
+- [x] **Task history & result storage**: `result`/`error`/`completed_at` columns; `complete_task()` and `fail_task()` UPDATE instead of DELETE
+- [x] **Retries with backoff**: `attempts` counter, `max_retries`, exponential backoff (10s, 30s, 60s, 300s, 600s)
+- [x] **Stale task reaper**: `recover_stale_tasks()` reclaims `running` tasks past their timeout
+- [x] **Dashboard**: shows completed/failed counts per queue
+- [x] **Rust worker**: aligned schema and updated `complete_task`/`fail_task` logic
 
 ### Phase 2 — Production hardening
 - [ ] **Authentication**: API key middleware (`X-API-Key` header)

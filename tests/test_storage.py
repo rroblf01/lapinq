@@ -43,26 +43,45 @@ async def test_claim_empty_queue():
         await storage.close()
 
 
-async def test_complete_deletes_task():
+async def test_complete_stores_result():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("to_complete", "default", "test_module")
         await storage.claim_task("worker-1")
-        await storage.complete_task(task_id)
+        await storage.complete_task(task_id, result='"ok"')
         task = await storage.get_task(task_id)
-        assert task is None
+        assert task is not None
+        assert task["status"] == "completed"
+        assert task["result"] == '"ok"'
     finally:
         await storage.close()
 
 
-async def test_fail_deletes_task():
+async def test_fail_exhausts_retries():
     storage = await make_storage()
     try:
-        task_id = await storage.enqueue("to_fail", "default", "test_module")
+        task_id = await storage.enqueue("to_fail", "default", "test_module", max_retries=0)
         await storage.claim_task("worker-1")
-        await storage.fail_task(task_id)
+        await storage.fail_task(task_id, error="boom")
         task = await storage.get_task(task_id)
-        assert task is None
+        assert task is not None
+        assert task["status"] == "failed"
+        assert task["error"] == "boom"
+    finally:
+        await storage.close()
+
+
+async def test_fail_retries_on_first_attempt():
+    storage = await make_storage()
+    try:
+        task_id = await storage.enqueue("to_retry", "default", "test_module", max_retries=3)
+        await storage.claim_task("worker-1")
+        await storage.fail_task(task_id, error="transient")
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "pending"
+        assert task["attempts"] == 1
+        assert task["error"] == "transient"
     finally:
         await storage.close()
 
@@ -120,6 +139,34 @@ async def test_cancel_running_task_fails():
         assert cancelled is False
     finally:
         await storage.close()
+
+
+async def test_recover_stale_tasks():
+    storage = await make_storage()
+    try:
+        task_id = await storage.enqueue("stale", "q1", "m1")
+        await storage.claim_task("dead-worker")
+        async with storage.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE lagomorph_tasks SET started_at = now() - interval '1 hour' WHERE id = $1",
+                task_id,
+            )
+        recovered = await storage.recover_stale_tasks(max_running_seconds=300)
+        assert task_id in recovered
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "pending"
+    finally:
+        await storage.close()
+
+
+async def test_retry_backoff_seconds():
+    from lagomorph.storage import _retry_backoff_seconds
+    assert _retry_backoff_seconds(0) == 0
+    assert _retry_backoff_seconds(1) == 10
+    assert _retry_backoff_seconds(2) == 30
+    assert _retry_backoff_seconds(3) == 60
+    assert _retry_backoff_seconds(10) == 600
 
 
 async def test_skipped_locked_task():

@@ -22,9 +22,10 @@ async def test_execute_imports_and_runs_function():
     try:
         task_id = await storage.enqueue("dummy_task", "default", "tests.test_worker")
         await storage.claim_task("test-worker-2")
-        await storage.complete_task(task_id)
-        remaining = await storage.get_task(task_id)
-        assert remaining is None
+        await storage.complete_task(task_id, result='"ok"')
+        done = await storage.get_task(task_id)
+        assert done is not None
+        assert done["status"] == "completed"
     finally:
         await storage.close()
 

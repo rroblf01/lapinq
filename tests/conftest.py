@@ -4,27 +4,10 @@ import asyncio
 import sys
 
 import pytest
+from lagomorph.storage import SQL_SCHEMA
 from testcontainers.postgres import PostgresContainer
 
 DATABASE_URL: str | None = None
-
-SQL_SCHEMA = """
-CREATE TABLE IF NOT EXISTS lagomorph_tasks (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    queue_name  TEXT NOT NULL,
-    task_name   TEXT NOT NULL,
-    module_path TEXT NOT NULL,
-    args        JSONB NOT NULL DEFAULT '[]',
-    kwargs      JSONB NOT NULL DEFAULT '{}',
-    status      TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending','running','completed','failed')),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    started_at  TIMESTAMPTZ,
-    worker_id   TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_tasks_status
-    ON lagomorph_tasks(status, created_at);
-"""
 
 
 @pytest.fixture(scope="session", autouse=True)

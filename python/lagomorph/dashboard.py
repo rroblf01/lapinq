@@ -86,10 +86,12 @@ def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
         cards += f"""
         <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">{q["queue_name"]}</div>
-            <div class="text-2xl font-bold text-gray-800 dark:text-white">{total} tasks</div>
+            <div class="text-2xl font-bold text-gray-800 dark:text-white">{total} active</div>
             <div class="flex gap-4 mt-3 text-sm">
                 <span class="text-yellow-600"><span class="font-medium">{q["pending"]}</span> pending</span>
                 <span class="text-blue-600"><span class="font-medium">{q["running"]}</span> running</span>
+                <span class="text-green-600"><span class="font-medium">{q["completed"]}</span> done</span>
+                <span class="text-red-600"><span class="font-medium">{q["failed"]}</span> failed</span>
             </div>
         </div>"""
     return cards

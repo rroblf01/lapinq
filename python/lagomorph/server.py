@@ -156,7 +156,7 @@ def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:
     for key in ("id",):
         if key in result and isinstance(result[key], uuid.UUID):
             result[key] = str(result[key])
-    for key in ("created_at", "started_at"):
+    for key in ("created_at", "started_at", "completed_at", "scheduled_at"):
         if key in result and result[key] is not None:
             result[key] = result[key].isoformat()
     return result

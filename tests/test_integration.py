@@ -64,10 +64,12 @@ async def test_full_flow_claim_and_complete():
         assert claimed["args"] == [1]
         assert claimed["kwargs"] == {"name": "test"}
 
-        await storage.complete_task(task_id)
+        await storage.complete_task(task_id, result='"done"')
 
-        deleted = await storage.get_task(task_id)
-        assert deleted is None
+        completed = await storage.get_task(task_id)
+        assert completed is not None
+        assert completed["status"] == "completed"
+        assert completed["result"] == '"done"'
     finally:
         await storage.close()
 

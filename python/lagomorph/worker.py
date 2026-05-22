@@ -51,25 +51,20 @@ async def run_worker(
                     )
                     stdout, stderr = await proc.communicate()
                     if proc.returncode == 0:
-                        logger.info(
-                            "Task %s completed: %s",
-                            task_id,
-                            stdout.decode().strip(),
-                        )
+                        result = stdout.decode().strip()
+                        logger.info("Task %s completed: %s", task_id, result)
+                        await storage.complete_task(task_id, result=result)
                     else:
-                        logger.warning(
-                            "Task %s failed: %s",
-                            task_id,
-                            stderr.decode().strip(),
-                        )
-                    await storage.complete_task(task_id)
+                        error = stderr.decode().strip()
+                        logger.warning("Task %s failed: %s", task_id, error)
+                        await storage.fail_task(task_id, error=error)
             except TimeoutError:
                 logger.warning("Task %s timed out after %ds", task_id, task_timeout)
-                await storage.complete_task(task_id)
+                await storage.fail_task(task_id, error="timed out")
             except Exception:
                 logger.exception("Unexpected error processing task %s", task_id)
                 with contextlib.suppress(Exception):
-                    await storage.complete_task(task_id)
+                    await storage.fail_task(task_id, error="unexpected worker error")
 
     logger.info(
         "Worker %s starting (concurrency=%d, poll_interval=%.1fs, timeout=%ds)",
