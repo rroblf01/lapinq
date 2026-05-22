@@ -7,7 +7,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from starlette.applications import Starlette
@@ -116,6 +116,7 @@ def create_app(
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
         storage = await Storage.create(database_url)
         app.state.storage = storage
+        app.state.cleanup_interval = cleanup_interval
         bg_tasks: list[asyncio.Task[None]] = []
         if worker:
             bg_tasks.append(
@@ -337,7 +338,11 @@ async def ws_endpoint(websocket: WebSocket) -> None:
             table = _tasks_table_html([_serialize_task(t) for t in tasks])
             if cards != last_cards or table != last_table or changed:
                 last_cards, last_table, changed = cards, table, False
-                await websocket.send_json({"cards": cards, "table": table})
+                payload: dict[str, Any] = {"cards": cards, "table": table}
+                ci = getattr(websocket.app.state, "cleanup_interval", 0)
+                if ci:
+                    payload["cleanup_interval"] = ci
+                await websocket.send_json(payload)
         except Exception:
             pass
 
@@ -398,6 +403,26 @@ async def metrics(request: Request) -> Response:
     return Response("\n".join(lines), media_type="text/plain; version=0.0.4")
 
 
+def _format_ttl(created_at: datetime | None, ttl_seconds: int | None) -> str:
+    if ttl_seconds is None:
+        return "∞"
+    if created_at is None:
+        return f"{ttl_seconds}s"
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    deadline = created_at + timedelta(seconds=ttl_seconds)
+    remaining = (deadline - datetime.now(timezone.utc)).total_seconds()
+    if remaining <= 0:
+        return "expired"
+    if remaining >= 86400:
+        return f"{int(remaining // 86400)}d {int((remaining % 86400) // 3600)}h"
+    if remaining >= 3600:
+        return f"{int(remaining // 3600)}h {int((remaining % 3600) // 60)}m"
+    if remaining >= 60:
+        return f"{int(remaining // 60)}m {int(remaining % 60)}s"
+    return f"{int(remaining)}s"
+
+
 def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:
     result = dict(task)
     for key in ("id",):
@@ -406,6 +431,9 @@ def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:
     for key in ("created_at", "started_at", "completed_at", "scheduled_at", "last_heartbeat"):
         if key in result and result[key] is not None:
             result[key] = result[key].isoformat()
+    result["ttl_remaining"] = _format_ttl(
+        task.get("created_at"), task.get("ttl_seconds"),
+    )
     return result
 
 

@@ -106,6 +106,7 @@ td.err { color: #dc2626; }
 
 .empty { padding: 1.5rem; text-align: center; color: #9ca3af; }
 .connecting { padding: 1.5rem; text-align: center; color: #9ca3af; }
+.cleanup-info { font-size: 0.75rem; color: #9ca3af; margin-bottom: 0.75rem; text-align: right; }
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
@@ -168,6 +169,8 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
     </div>
   </div>
 
+  <div id="cleanup-info" class="cleanup-info"></div>
+
   <div id="queue-cards" class="cards-grid">
     <div class="skeleton"><div class="line w-24"></div><div class="line w-32"></div></div>
   </div>
@@ -188,6 +191,8 @@ function connect() {{
         var data = JSON.parse(e.data);
         if (data.cards) document.getElementById("queue-cards").innerHTML = data.cards;
         if (data.table) document.getElementById("tasks-table").innerHTML = data.table;
+        if (data.cleanup_interval) document.getElementById("cleanup-info").innerHTML =
+            "Cleanup every " + data.cleanup_interval + "s";
     }};
     ws.onclose = function() {{ setTimeout(connect, 1000); }};
 }}
@@ -262,6 +267,7 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
         args_str = _args_str(t)
         result_val = t.get("result")
         error_val = t.get("error")
+        ttl = t.get("ttl_remaining", "")
 
         rows += f"""
         <tr>
@@ -272,6 +278,7 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
             <td class="trunc" title="{result_val or ""}">{_fmt(result_val)}</td>
             <td class="trunc err" title="{error_val or ""}">{_fmt(error_val)}</td>
             <td><span class="badge {badge}">{status}</span></td>
+            <td class="mono">{ttl}</td>
         </tr>"""
     return f"""
     <table>
@@ -284,6 +291,7 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
                 <th>Result</th>
                 <th>Error</th>
                 <th>Status</th>
+                <th>TTL</th>
             </tr>
         </thead>
         <tbody>{rows}</tbody>
