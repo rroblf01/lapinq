@@ -18,7 +18,7 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lagomorph Dashboard</title>
-<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script src="https://unpkg.com/htmx.org@2.0.10"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
@@ -113,6 +113,20 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
     if not tasks:
         return '<div class="p-6 text-center text-gray-400">No tasks found</div>'
 
+    def _fmt(val: Any, maxlen: int = 60) -> str:
+        if val is None:
+            return ""
+        s = str(val)
+        return s[:maxlen] + "..." if len(s) > maxlen else s
+
+    def _args_str(t: dict[str, Any]) -> str:
+        parts = []
+        if t.get("args"):
+            parts.append(", ".join(str(a) for a in t["args"]))
+        if t.get("kwargs"):
+            parts.append(", ".join(f"{k}={v}" for k, v in t["kwargs"].items()))
+        return ", ".join(parts)
+
     rows = ""
     for t in tasks:
         tid = str(t.get("id", ""))[:8]
@@ -124,11 +138,18 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
             "failed": "text-red-600 bg-red-50 dark:bg-red-900/20",
         }.get(status, "text-gray-600 bg-gray-50")
 
+        args_str = _args_str(t)
+        result_val = t.get("result")
+        error_val = t.get("error")
+
         rows += f"""
         <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
             <td class="px-6 py-3 text-sm font-mono text-gray-500">{tid}...</td>
             <td class="px-6 py-3 text-sm text-gray-800 dark:text-white">{t.get("task_name", "")}</td>
             <td class="px-6 py-3 text-sm text-gray-500">{t.get("queue_name", "")}</td>
+            <td class="px-6 py-3 text-sm text-gray-500 max-w-[200px] truncate" title="{args_str}">{_fmt(args_str)}</td>
+            <td class="px-6 py-3 text-sm text-gray-500 max-w-[150px] truncate" title="{result_val or ""}">{_fmt(result_val)}</td>
+            <td class="px-6 py-3 text-sm text-red-600 max-w-[150px] truncate" title="{error_val or ""}">{_fmt(error_val)}</td>
             <td class="px-6 py-3">
                 <span class="inline-block px-2 py-0.5 text-xs font-medium rounded-full {status_color}">{status}</span>
             </td>
@@ -140,6 +161,9 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
                 <th class="px-6 py-3">ID</th>
                 <th class="px-6 py-3">Task</th>
                 <th class="px-6 py-3">Queue</th>
+                <th class="px-6 py-3">Args</th>
+                <th class="px-6 py-3">Result</th>
+                <th class="px-6 py-3">Error</th>
                 <th class="px-6 py-3">Status</th>
             </tr>
         </thead>
