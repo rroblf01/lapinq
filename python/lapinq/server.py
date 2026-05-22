@@ -162,7 +162,10 @@ def create_app(
 async def enqueue(request: Request) -> JSONResponse:
     storage: Storage = request.app.state.storage
 
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
     if _estimate_size(body) > MAX_PAYLOAD_SIZE:
         return JSONResponse(
             {"error": f"payload too large (max {MAX_PAYLOAD_SIZE} bytes)"},
@@ -347,7 +350,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     payload["cleanup_interval"] = ci
                 await websocket.send_json(payload)
         except Exception:
-            pass
+            logger.exception("Error in WebSocket _send")
 
     await _send()
 

@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import signal
 
+import pytest
 from lapinq.storage import Storage
 
 DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
@@ -110,6 +111,7 @@ def slow_func() -> None:
     time.sleep(999)
 
 
+@pytest.mark.slow
 async def test_process_task_timeout(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
     import lapinq.worker as wmod
@@ -202,6 +204,7 @@ async def test_run_worker_inline_processes_task(monkeypatch):
         await storage.close()
 
 
+@pytest.mark.slow
 async def test_run_worker_inline_handles_timeout(monkeypatch):
     import lapinq.worker as wmod
 
@@ -228,6 +231,7 @@ async def test_run_worker_inline_handles_timeout(monkeypatch):
         await storage.close()
 
 
+@pytest.mark.slow
 async def test_run_worker_loop_processes_task(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
 

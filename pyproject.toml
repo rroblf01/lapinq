@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "lapinq"
-version = "0.1.0"
+version = "1.0.0"
 description = "A lightweight task queue with PostgreSQL backend"
 readme = "README.md"
 authors = [
@@ -47,6 +47,9 @@ module-name = "lapinq._worker"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: Subprocess-based tests that take >30s (skipped by default in CI)",
+]
 
 [tool.coverage.run]
 source_pkgs = ["lapinq"]

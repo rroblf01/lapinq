@@ -1,4 +1,4 @@
-# Lagomorph 🐇
+# Lapinq 🐇
 
 **A lightweight task queue with PostgreSQL backend — replacing Celery + RabbitMQ with a single container.**
 
@@ -143,42 +143,46 @@ uv run maturin develop
 uv run pytest
 ```
 
-## Roadmap
+## Roadmap — v1.0.0
 
-### Phase 0 — Bug fixes & tech debt ✅
-- [x] Fix `except ValueError, AttributeError` syntax (Python 2 relic)
-- [x] Remove unused `jinja2` and `itsdangerous` dependencies
-- [x] `fail_task()` should store/log the error message, not ignore it
-- [x] Add missing `dashboard.png` screenshot or remove the broken reference
+### ✅ Complete (v0.1.0)
+- `@tasks.task()` decorator API, PostgreSQL queue, REST API, WebSocket dashboard
+- Python + Rust workers, configurable concurrency, task timeout, cancellation
+- Multiple queues, CORS, graceful shutdown, Docker Compose, CI/CD
+- Task history, retries with backoff, stale task reaper, scheduled tasks
+- Priority queues, async client, Dead Letter Queue, worker heartbeat
+- Auth (API key), rate limiting, Prometheus metrics, structured logging
+- PyPI package, i18n docs (EN + ES), TTL support, Rust executor (PyO3)
 
-### Phase 1 — Core reliability ✅
-- [x] **Task history & result storage**: `result`/`error`/`completed_at` columns; `complete_task()` and `fail_task()` UPDATE instead of DELETE
-- [x] **Retries with backoff**: `attempts` counter, `max_retries`, exponential backoff (10s, 30s, 60s, 300s, 600s)
-- [x] **Stale task reaper**: `recover_stale_tasks()` reclaims `running` tasks past their timeout
-- [x] **Dashboard**: shows completed/failed counts per queue
-- [x] **Rust worker**: aligned schema and updated `complete_task`/`fail_task` logic
+### 🔵 Phase 1 — Production hardening (current)
+- [ ] **Rust worker: graceful shutdown** — signal handlers for SIGTERM/SIGINT
+- [ ] **Rust worker: connection pool** — replace single `Client` with `deadpool-postgres`
+- [ ] **Rust worker: heartbeat** — periodic `last_heartbeat` updates
+- [ ] **Rust worker: integration tests** — test against real PostgreSQL
+- [ ] **WebSocket error logging** — replace bare `except: pass` with logging
+- [ ] **Request body validation** — catch malformed JSON in `enqueue` endpoint
+- [ ] **CI: Python version matrix** — test 3.10–3.14 on Linux, 3.14 on Win/Mac
+- [ ] **CI: security scanning** — add `bandit` / `trivy`
+- [ ] **Configurable constants** — `MAX_PAYLOAD_SIZE`, `HEARTBEAT_INTERVAL`, pool size via env
+- [ ] **CORS configurable** — `allow_origins` via env var
 
-### Phase 2 — Production hardening ✅
-- [x] **Authentication**: API key middleware (`X-API-Key` header)
-- [x] **Rate limiting**: per-IP request throttling
-- [x] **Prometheus metrics**: `/metrics` endpoint for monitoring
-- [x] **Structured logging**: JSON logging with `LAGOMORPH_JSON_LOG=1`
-- [x] **Configurable pool size**: `max_size` parameter in `Storage.create()`
+### 🟡 Phase 2 — v1.0.0 release
+- [ ] **Schema migrations** — versioned migration strategy
+- [ ] **CHANGELOG.md** — release history
+- [ ] **CONTRIBUTING.md** — development guide
+- [ ] **`abi3` wheels** — single wheel for all Python 3.x versions
+- [ ] **Code coverage in CI** — upload to Codecov
+- [ ] **Validated query params** — safe `limit` parsing
+- [ ] **Rust error types** — `Box<dyn Error>` over raw `String`
+- [ ] **Tag v1.0.0** — publish to PyPI + GitHub Pages
 
-### Phase 3 — Advanced features ✅
-- [x] **Scheduled tasks**: `scheduled_at` support for delayed execution
-- [x] **Priority queues**: `priority` column with `ORDER BY priority DESC, created_at`
-- [x] **Async client**: `AsyncTaskQueue` for asyncio codebases
-- [x] **Dead Letter Queue**: `/api/tasks/failed` list + `/api/tasks/{id}/requeue`
-- [x] **Worker heartbeat**: periodic `last_heartbeat` updates every 15s
-
-### Phase 4 — Testing & documentation ✅
-- [x] Tests for `execute.py` (success, not-found, function-error via subprocess)
-- [x] Tests for `worker.py` main loop (full claim-process-complete cycle)
-- [x] Tests for CLI argument parsing (argparse dispatch)
-- [x] Document DB schema, env vars, error codes, task lifecycle
-- [ ] Rust worker integration tests against real PostgreSQL
-- [ ] Real-world example projects in `examples/`
+### 🟢 Future (post v1.0.0)
+- Recurring/cron tasks
+- Task chaining / workflows (`chain`, `group`, `chord`)
+- Distributed rate limiting (Redis-backed)
+- OpenTelemetry tracing
+- AsyncResult / task result retrieval
+- Pre/post task middleware hooks
 
 ---
 

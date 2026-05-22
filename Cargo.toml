@@ -1,6 +1,6 @@
 [package]
 name = "lapinq-worker"
-version = "0.1.0"
+version = "1.0.0"
 description = "Lapinq Rust worker - polls PostgreSQL and executes Python tasks"
 edition = "2021"
 

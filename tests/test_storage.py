@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from lapinq.storage import Storage
 
 DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
@@ -329,6 +330,7 @@ async def test_enqueue_ttl_zero_returns_none():
         await storage.close()
 
 
+@pytest.mark.slow
 async def test_cleanup_expired_tasks():
     import asyncio
 

@@ -8,6 +8,27 @@ use uuid::Uuid;
 
 use _worker::{claim_task, complete_task_in_db, connect_db, ensure_schema, fail_task_in_db, Task};
 
+fn install_signal_handlers() -> tokio::sync::oneshot::Receiver<()> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("Failed to install SIGTERM handler");
+    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .expect("Failed to install SIGINT handler");
+
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM, shutting down...");
+            }
+            _ = sigint.recv() => {
+                info!("Received SIGINT, shutting down...");
+            }
+        }
+        let _ = tx.send(());
+    });
+    rx
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "lapinq-worker", version)]
 struct Args {
@@ -40,36 +61,48 @@ async fn main() {
 
     let semaphore = Arc::new(Semaphore::new(args.concurrency));
     let client = Arc::new(client);
+    let shutdown_rx = install_signal_handlers();
+    tokio::pin!(shutdown_rx);
 
     loop {
-        let task = match claim_task(&client, &worker_id).await {
-            Ok(Some(t)) => t,
-            Ok(None) => {
-                tokio::time::sleep(tokio::time::Duration::from_secs_f64(
-                    args.poll_interval_secs,
-                ))
-                .await;
-                continue;
+        tokio::select! {
+            _ = &mut shutdown_rx => {
+                info!("Worker {} shutting down, draining active tasks...", worker_id);
+                break;
             }
-            Err(e) => {
-                error!("Error claiming task: {}", e);
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                continue;
-            }
-        };
+            result = claim_task(&client, &worker_id) => {
+                let task = match result {
+                    Ok(Some(t)) => t,
+                    Ok(None) => {
+                        tokio::time::sleep(tokio::time::Duration::from_secs_f64(
+                            args.poll_interval_secs,
+                        ))
+                        .await;
+                        continue;
+                    }
+                    Err(e) => {
+                        error!("Error claiming task: {}", e);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
 
-        let sem = semaphore.clone();
-        let cl = client.clone();
-        let timeout = args.task_timeout_secs;
+                let sem = semaphore.clone();
+                let cl = client.clone();
+                let timeout = args.task_timeout_secs;
 
-        tokio::spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
-            info!("Executing task {}", task.id);
-            if let Err(e) = execute_task(&cl, &task, timeout).await {
-                warn!("Task {} failed: {}", task.id, e);
+                tokio::spawn(async move {
+                    let _permit = sem.acquire().await.unwrap();
+                    info!("Executing task {}", task.id);
+                    if let Err(e) = execute_task(&cl, &task, timeout).await {
+                        warn!("Task {} failed: {}", task.id, e);
+                    }
+                });
             }
-        });
+        }
     }
+
+    info!("Worker {} stopped", worker_id);
 }
 
 async fn execute_task(

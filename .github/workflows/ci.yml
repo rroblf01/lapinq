@@ -33,7 +33,42 @@ jobs:
       - name: Test
         run: cargo test
 
-  test:
+  test-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: lapinq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        run: pip install uv
+      - name: Install maturin
+        run: uv add maturin
+      - name: Build package
+        run: uv run maturin develop
+      - name: Run tests
+        run: uv run pytest tests/ -v -m "not slow"
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
+
+  test-slow:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -60,10 +95,42 @@ jobs:
         run: uv add maturin
       - name: Build package
         run: uv run maturin develop
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      - name: Run slow tests
+        run: uv run pytest tests/ -v -m "slow"
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        run: pip install uv
+      - name: Install maturin
+        run: uv add maturin
+      - name: Build package
+        run: uv run maturin develop
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        run: pip install uv
+      - name: Install maturin
+        run: uv add maturin
+      - name: Build package
+        run: uv run maturin develop
+      - name: Run tests
+        run: uv run pytest tests/ -v
 
   build:
     runs-on: ubuntu-latest

@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 
+import pytest
 from lapinq.execute import execute_task_inline
 from lapinq.storage import Storage
 
@@ -22,6 +23,7 @@ def fail_func() -> None:
     raise RuntimeError("expected failure")
 
 
+@pytest.mark.slow
 async def test_execute_success():
     storage = await Storage.create(DATABASE_URL)
     try:
@@ -40,6 +42,7 @@ async def test_execute_success():
         await storage.close()
 
 
+@pytest.mark.slow
 async def test_execute_async_function():
     storage = await Storage.create(DATABASE_URL)
     try:
@@ -58,6 +61,7 @@ async def test_execute_async_function():
         await storage.close()
 
 
+@pytest.mark.slow
 async def test_execute_task_not_found():
     import uuid
     fake_id = str(uuid.uuid4())
@@ -194,6 +198,7 @@ async def test_execute_inline_missing_args_key():
         assert "expected failure" in str(e)
 
 
+@pytest.mark.slow
 async def test_execute_function_raises():
     storage = await Storage.create(DATABASE_URL)
     try:
