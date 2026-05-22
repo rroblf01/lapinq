@@ -120,6 +120,48 @@ async def test_execute_inline_function_raises():
         assert "expected failure" in str(e)
 
 
+async def test_rust_executor_available():
+    from lagomorph._worker import execute_task_inline as rust_exec
+
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "add",
+        "args": [5, 7],
+        "kwargs": {},
+    }
+    result = rust_exec(task_data)
+    assert result == "12"
+
+
+async def test_rust_executor_rejects_async():
+    from lagomorph._worker import execute_task_inline as rust_exec
+
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "async_echo",
+        "args": ["hello"],
+        "kwargs": {},
+    }
+    try:
+        rust_exec(task_data)
+        raise AssertionError("expected TypeError")
+    except TypeError:
+        pass
+
+
+async def test_rust_executor_fallback_to_python_for_async():
+    from lagomorph.execute import execute_task_inline
+
+    task_data = {
+        "module_path": "tests.test_execute",
+        "task_name": "async_echo",
+        "args": ["rust_fallback"],
+        "kwargs": {},
+    }
+    result = await execute_task_inline(task_data)
+    assert result == "echo:rust_fallback"
+
+
 async def test_execute_function_raises():
     storage = await Storage.create(DATABASE_URL)
     try:

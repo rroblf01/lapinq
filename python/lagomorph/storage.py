@@ -50,10 +50,28 @@ CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
     WHERE status = 'pending';
 """
 
+NOTIFY_SQL = """
+CREATE OR REPLACE FUNCTION notify_lagomorph_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM pg_notify('lagomorph_changed', '');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS lagomorph_change_trigger ON lagomorph_tasks;
+CREATE TRIGGER lagomorph_change_trigger
+AFTER INSERT OR UPDATE ON lagomorph_tasks
+FOR EACH STATEMENT
+EXECUTE FUNCTION notify_lagomorph_change();
+"""
+
 
 class Storage:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
+        self._listener_conn: asyncpg.Connection | None = None
+        self._listener_cb: Any = None
 
     @classmethod
     async def create(cls, database_url: str, max_size: int = 10, max_retries: int = 5) -> Storage:
@@ -63,6 +81,7 @@ class Storage:
                 pool = await asyncpg.create_pool(database_url, min_size=1, max_size=max_size)
                 async with pool.acquire() as conn:
                     await conn.execute(SQL_SCHEMA)
+                    await conn.execute(NOTIFY_SQL)
                 return cls(pool)
             except Exception as e:
                 last_error = e
@@ -84,7 +103,21 @@ class Storage:
                 result[key] = json_loads(result[key])
         return result
 
+    async def listen_for_changes(self, callback: Any) -> None:
+        conn = await self.pool.acquire()
+        self._listener_cb = lambda *_: callback()
+        await conn.add_listener("lagomorph_changed", self._listener_cb)
+        self._listener_conn = conn
+
+    async def stop_listening(self) -> None:
+        if self._listener_conn is not None:
+            conn = self._listener_conn
+            self._listener_conn = None
+            await conn.remove_listener("lagomorph_changed", self._listener_cb)
+            await self.pool.release(conn)
+
     async def close(self) -> None:
+        await self.stop_listening()
         await self.pool.close()
 
     async def enqueue(

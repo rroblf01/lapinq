@@ -117,6 +117,8 @@ def create_app(
         storage = await Storage.create(database_url)
         app.state.storage = storage
         app.state.cleanup_interval = cleanup_interval
+        app.state.notification_event = asyncio.Event()
+        await storage.listen_for_changes(app.state.notification_event.set)
         bg_tasks: list[asyncio.Task[None]] = []
         if worker:
             bg_tasks.append(
@@ -301,6 +303,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
     last_cards: str | None = None
     last_table: str | None = None
     changed = True
+    notif_event: asyncio.Event | None = getattr(websocket.app.state, "notification_event", None)
 
     async def _send() -> None:
         nonlocal last_cards, last_table, changed
@@ -350,8 +353,20 @@ async def ws_endpoint(websocket: WebSocket) -> None:
 
     try:
         while True:
-            try:
-                data = await asyncio.wait_for(websocket.receive_json(), timeout=2)
+            recv_task = asyncio.create_task(websocket.receive_json())
+            if notif_event:
+                notif_event.clear()
+                notif_task = asyncio.create_task(notif_event.wait())
+            else:
+                notif_task = None
+            pending: list[asyncio.Task[Any]] = [recv_task]
+            if notif_task:
+                pending.append(notif_task)
+
+            done, _ = await asyncio.wait(pending, timeout=2, return_when=asyncio.FIRST_COMPLETED)
+
+            if recv_task in done:
+                data = recv_task.result()
                 if "queue" in data:
                     queue_filter = data["queue"] or None
                     changed = True
@@ -370,8 +385,16 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 if "error" in data:
                     error_search = data["error"] or None
                     changed = True
-            except asyncio.TimeoutError:
-                pass
+            else:
+                recv_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await recv_task
+
+            if notif_task and notif_task not in done:
+                notif_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await notif_task
+
             await _send()
     except WebSocketDisconnect:
         pass
