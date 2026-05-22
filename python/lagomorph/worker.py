@@ -39,7 +39,7 @@ async def run_worker(
     heartbeat_task = asyncio.create_task(_heartbeat_loop(storage, worker_id, shutdown_event))
 
     async def process_task(task_data: dict) -> None:
-        async with semaphore:
+        try:
             task_id = task_data["id"]
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -68,6 +68,8 @@ async def run_worker(
                 logger.exception("Unexpected error processing task %s", task_id)
                 with contextlib.suppress(Exception):
                     await storage.fail_task(task_id, error="unexpected worker error")
+        finally:
+            semaphore.release()
 
     logger.info(
         "Worker %s starting (concurrency=%d, poll_interval=%.1fs, timeout=%ds)",
@@ -79,12 +81,14 @@ async def run_worker(
 
     try:
         while not shutdown_event.is_set():
+            await semaphore.acquire()
             task_data = await storage.claim_task(worker_id)
             if task_data is not None:
                 t = asyncio.create_task(process_task(task_data))
                 active_tasks.add(t)
                 t.add_done_callback(active_tasks.discard)
             else:
+                semaphore.release()
                 await asyncio.sleep(poll_interval)
     except asyncio.CancelledError:
         pass
@@ -115,7 +119,7 @@ async def run_worker_inline(
     heartbeat_task = asyncio.create_task(_heartbeat_loop(storage, worker_id, shutdown_event))
 
     async def process_task(task_data: dict) -> None:
-        async with semaphore:
+        try:
             task_id = task_data["id"]
             try:
                 result = await asyncio.wait_for(
@@ -131,6 +135,8 @@ async def run_worker_inline(
                 logger.exception("Task %s failed", task_id)
                 with contextlib.suppress(Exception):
                     await storage.fail_task(task_id, error="unexpected worker error")
+        finally:
+            semaphore.release()
 
     logger.info(
         "Inline worker %s starting (concurrency=%d, poll_interval=%.1fs, timeout=%ds)",
@@ -142,12 +148,14 @@ async def run_worker_inline(
 
     try:
         while not shutdown_event.is_set():
+            await semaphore.acquire()
             task_data = await storage.claim_task(worker_id)
             if task_data is not None:
                 t = asyncio.create_task(process_task(task_data))
                 active_tasks.add(t)
                 t.add_done_callback(active_tasks.discard)
             else:
+                semaphore.release()
                 await asyncio.sleep(poll_interval)
     except asyncio.CancelledError:
         pass

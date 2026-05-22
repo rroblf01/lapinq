@@ -277,6 +277,8 @@ async def ws_endpoint(websocket: WebSocket) -> None:
         except Exception:
             pass
 
+    await _send()
+
     try:
         while True:
             try:
