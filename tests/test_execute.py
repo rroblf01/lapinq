@@ -192,7 +192,7 @@ async def test_execute_inline_missing_args_key():
         assert "expected failure" in str(e)
 
 
-async def test_execute_inline_function_raises():
+async def test_execute_function_raises():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("fail_func", "default", "tests.test_execute")

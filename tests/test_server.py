@@ -666,15 +666,14 @@ async def test_websocket_queue_filter():
     from starlette.testclient import TestClient
 
     app = create_app(database_url=DATABASE_URL)
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as ws:
-            data = ws.receive_json()
-            assert "cards" in data
-            assert "table" in data
+    with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        data = ws.receive_json()
+        assert "cards" in data
+        assert "table" in data
 
-            ws.send_json({"queue": "nonexistent"})
-            data2 = ws.receive_json()
-            assert data2 is not None
+        ws.send_json({"queue": "nonexistent"})
+        data2 = ws.receive_json()
+        assert data2 is not None
 
 
 async def test_metrics_with_multiple_queues():
@@ -710,12 +709,11 @@ async def test_websocket_id_filter_partial():
     app.state.storage = storage
     try:
         tid = await storage.enqueue("id_filter_test", "q1", "tests.test_execute")
-        with TestClient(app) as client:
-            with client.websocket_connect("/ws") as ws:
-                ws.receive_json()
-                prefix = str(tid)[:8]
-                ws.send_json({"id": prefix})
-                data = ws.receive_json()
-                assert "id_filter_test" in data["table"]
+        with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            prefix = str(tid)[:8]
+            ws.send_json({"id": prefix})
+            data = ws.receive_json()
+            assert "id_filter_test" in data["table"]
     finally:
         await storage.close()
