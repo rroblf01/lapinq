@@ -158,12 +158,12 @@ uv run pytest
 - [x] **Dashboard**: shows completed/failed counts per queue
 - [x] **Rust worker**: aligned schema and updated `complete_task`/`fail_task` logic
 
-### Phase 2 — Production hardening
-- [ ] **Authentication**: API key middleware (`X-API-Key` header)
-- [ ] **Rate limiting**: per-IP request throttling
-- [ ] **Prometheus metrics**: `/metrics` endpoint for monitoring
-- [ ] **Structured logging**: JSON logging with `structlog` or equivalent
-- [ ] **Configurable pool size**: expose `max_size` in `Storage.create()`
+### Phase 2 — Production hardening ✅
+- [x] **Authentication**: API key middleware (`X-API-Key` header)
+- [x] **Rate limiting**: per-IP request throttling
+- [x] **Prometheus metrics**: `/metrics` endpoint for monitoring
+- [x] **Structured logging**: JSON logging with `LAGOMORPH_JSON_LOG=1`
+- [x] **Configurable pool size**: `max_size` parameter in `Storage.create()`
 
 ### Phase 3 — Advanced features
 - [ ] **Scheduled tasks**: `schedule_at` support for delayed execution

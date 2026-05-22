@@ -225,3 +225,106 @@ async def test_dashboard_page():
             assert "Lagomorph Dashboard" in resp.text
     finally:
         await storage.close()
+
+
+async def test_metrics_endpoint():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            await client.post(
+                "/api/enqueue",
+                json={"task_name": "t1", "queue_name": "q1", "module_path": "m1"},
+            )
+            resp = await client.get("/metrics")
+            assert resp.status_code == 200
+            text = resp.text
+            assert "# HELP lagomorph_tasks" in text
+            assert "# TYPE lagomorph_tasks gauge" in text
+            assert 'lagomorph_tasks{queue="q1",status="pending"} 1' in text
+    finally:
+        await storage.close()
+
+
+async def test_auth_middleware_blocks_without_key():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.get("/api/queues")
+            assert resp.status_code == 401
+            assert resp.json()["error"] == "unauthorized"
+    finally:
+        await storage.close()
+
+
+async def test_auth_middleware_allows_valid_key():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.get("/api/queues", headers={"X-API-Key": "secret-42"})
+            assert resp.status_code == 200
+    finally:
+        await storage.close()
+
+
+async def test_auth_middleware_skips_health():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.get("/health")
+            assert resp.status_code == 200
+    finally:
+        await storage.close()
+
+
+async def test_auth_middleware_skips_dashboard():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.get("/dashboard")
+            assert resp.status_code == 200
+    finally:
+        await storage.close()
+
+
+async def test_rate_limiting_blocks_excess():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, rate_limit=3)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            for _ in range(3):
+                r = await client.get("/api/queues")
+                assert r.status_code == 200
+            r = await client.get("/api/queues")
+            assert r.status_code == 429
+            assert r.json()["error"] == "rate limit exceeded"
+    finally:
+        await storage.close()

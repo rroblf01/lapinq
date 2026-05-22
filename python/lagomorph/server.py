@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import time
 import uuid
+from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from lagomorph.dashboard import dashboard_page, queues_html, tasks_html
@@ -18,7 +21,46 @@ from lagomorph.storage import Storage
 MAX_PAYLOAD_SIZE = 1024 * 100  # 100 KB
 
 
-def create_app(database_url: str = "postgresql://localhost:5432/lagomorph") -> Starlette:
+class AuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: Any, api_key: str) -> None:
+        super().__init__(app)
+        self.api_key = api_key
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if request.url.path.startswith("/api/"):
+            key = request.headers.get("X-API-Key")
+            if key != self.api_key:
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: Any, max_requests: int, window_seconds: int = 60) -> None:
+        super().__init__(app)
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._requests: dict[str, list[float]] = defaultdict(list)
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        if not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        ip = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        window_start = now - self.window_seconds
+        self._requests[ip] = [t for t in self._requests[ip] if t > window_start]
+        if len(self._requests[ip]) >= self.max_requests:
+            return JSONResponse({"error": "rate limit exceeded"}, status_code=429)
+        self._requests[ip].append(now)
+        return await call_next(request)
+
+
+def create_app(
+    database_url: str = "postgresql://localhost:5432/lagomorph",
+    api_key: str | None = None,
+    rate_limit: int = 0,
+) -> Starlette:
     routes = [
         Route("/api/enqueue", enqueue, methods=["POST"]),
         Route("/api/queues", queue_stats, methods=["GET"]),
@@ -29,6 +71,7 @@ def create_app(database_url: str = "postgresql://localhost:5432/lagomorph") -> S
         Route("/api/tasks/{task_id:str}", cancel_task, methods=["DELETE"]),
         Route("/dashboard", dashboard, methods=["GET"]),
         Route("/health", health, methods=["GET"]),
+        Route("/metrics", metrics, methods=["GET"]),
     ]
 
     @asynccontextmanager
@@ -38,18 +81,20 @@ def create_app(database_url: str = "postgresql://localhost:5432/lagomorph") -> S
         yield
         await storage.close()
 
-    app = Starlette(
-        routes=routes,
-        lifespan=lifespan,
-        middleware=[
-            Middleware(
-                CORSMiddleware,
-                allow_origins=["*"],
-                allow_methods=["*"],
-                allow_headers=["*"],
-            ),
-        ],
-    )
+    middleware: list[Middleware] = [
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        ),
+    ]
+    if api_key is not None:
+        middleware.append(Middleware(AuthMiddleware, api_key=api_key))
+    if rate_limit > 0:
+        middleware.append(Middleware(RateLimitMiddleware, max_requests=rate_limit))
+
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=middleware)
     return app
 
 
@@ -149,6 +194,22 @@ async def health(request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "database": "connected"})
     except Exception as e:
         return JSONResponse({"status": "error", "database": str(e)}, status_code=503)
+
+
+async def metrics(request: Request) -> Response:
+    storage: Storage = request.app.state.storage
+    stats = await storage.queue_stats()
+    lines: list[str] = [
+        "# HELP lagomorph_tasks Task counts by queue and status",
+        "# TYPE lagomorph_tasks gauge",
+    ]
+    for q in stats:
+        for status in ("pending", "running", "completed", "failed"):
+            lines.append(
+                f'lagomorph_tasks{{queue="{q["queue_name"]}",status="{status}"}} {q[status]}'
+            )
+    lines.append("")
+    return Response("\n".join(lines), media_type="text/plain; version=0.0.4")
 
 
 def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:

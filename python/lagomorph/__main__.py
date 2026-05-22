@@ -4,11 +4,9 @@ import argparse
 import logging
 import os
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
+from lagomorph.log import configure_logging
+
+configure_logging()
 
 
 def main() -> None:
@@ -46,7 +44,10 @@ def _run_server(args: argparse.Namespace) -> None:
     from lagomorph.server import create_app
 
     database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
-    app = create_app(database_url=database_url)
+    api_key = os.environ.get("LAGOMORPH_API_KEY")
+    rate_limit_str = os.environ.get("LAGOMORPH_RATE_LIMIT", "0")
+    rate_limit = int(rate_limit_str) if rate_limit_str.isdigit() else 0
+    app = create_app(database_url=database_url, api_key=api_key, rate_limit=rate_limit)
     import uvicorn
 
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
