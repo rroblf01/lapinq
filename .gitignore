@@ -25,3 +25,6 @@ site/
 
 # Coverage
 .coverage
+
+# Builds
+*.so
