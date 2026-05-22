@@ -143,6 +143,44 @@ uv run maturin develop
 uv run pytest
 ```
 
+## Roadmap
+
+### Phase 0 — Bug fixes & tech debt ✅
+- [x] Fix `except ValueError, AttributeError` syntax (Python 2 relic)
+- [x] Remove unused `jinja2` and `itsdangerous` dependencies
+- [x] `fail_task()` should store/log the error message, not ignore it
+- [x] Add missing `dashboard.png` screenshot or remove the broken reference
+
+### Phase 1 — Core reliability
+- [ ] **Retries with backoff**: re-enqueue on failure with `attempts` counter and `max_retries`
+- [ ] **Stale task reaper**: reclaim tasks stuck in `running` after worker death
+- [ ] **Task history**: keep completed/failed tasks instead of deleting them
+- [ ] **Result storage**: persist task return values and error messages
+
+### Phase 2 — Production hardening
+- [ ] **Authentication**: API key middleware (`X-API-Key` header)
+- [ ] **Rate limiting**: per-IP request throttling
+- [ ] **Prometheus metrics**: `/metrics` endpoint for monitoring
+- [ ] **Structured logging**: JSON logging with `structlog` or equivalent
+- [ ] **Configurable pool size**: expose `max_size` in `Storage.create()`
+
+### Phase 3 — Advanced features
+- [ ] **Scheduled tasks**: `schedule_at` support for delayed execution
+- [ ] **Priority queues**: `priority` column for ordering
+- [ ] **Async client**: `AsyncTaskQueue` for asyncio codebases
+- [ ] **Dead Letter Queue**: isolate tasks that exhausted retries
+- [ ] **Worker heartbeat**: periodic `last_heartbeat` to detect hung workers
+
+### Phase 4 — Testing & documentation
+- [ ] Tests for `execute.py` (100% uncovered)
+- [ ] Tests for `worker.py` main loop
+- [ ] Tests for CLI argument parsing
+- [ ] Rust worker integration tests against real PostgreSQL
+- [ ] Document DB schema, env vars, error codes, task lifecycle
+- [ ] Real-world example projects in `examples/`
+
+---
+
 ## License
 
 MIT

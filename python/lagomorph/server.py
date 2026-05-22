@@ -165,7 +165,7 @@ def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:
 def _parse_uuid(value: str) -> uuid.UUID | None:
     try:
         return uuid.UUID(value)
-    except ValueError, AttributeError:
+    except (ValueError, AttributeError):
         return None
 
 

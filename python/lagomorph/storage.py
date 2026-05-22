@@ -100,6 +100,8 @@ class Storage:
 
     async def fail_task(self, task_id: uuid.UUID, error: str | None = None) -> None:
         async with self.pool.acquire() as conn:
+            logger = __import__("logging").getLogger("lagomorph.storage")
+            logger.warning("Task %s failed: %s", task_id, error or "unknown error")
             await conn.execute("DELETE FROM lagomorph_tasks WHERE id = $1", task_id)
 
     async def get_task(self, task_id: uuid.UUID) -> dict[str, Any] | None:

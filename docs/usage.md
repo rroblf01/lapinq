@@ -95,7 +95,7 @@ curl http://localhost:8001/health
 
 Open `http://localhost:8001/dashboard` in your browser for the real-time HTMX dashboard.
 
-![Dashboard preview](dashboard.png)
+<!-- TODO: add a screenshot of the dashboard -->
 
 The dashboard auto-refreshes every 3 seconds and shows:
 - Queue names with pending/running counts
