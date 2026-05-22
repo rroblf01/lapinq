@@ -42,26 +42,25 @@ async def run_worker(
         async with semaphore:
             task_id = task_data["id"]
             try:
-                async with asyncio.timeout(task_timeout):
-                    proc = await asyncio.create_subprocess_exec(
-                        sys.executable,
-                        "-m",
-                        "lagomorph",
-                        "execute",
-                        str(task_id),
-                        env={**os.environ, "DATABASE_URL": database_url, "LAGOMORPH_WORKER_ID": worker_id},
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, stderr = await proc.communicate()
-                    if proc.returncode == 0:
-                        result = stdout.decode().strip()
-                        logger.info("Task %s completed: %s", task_id, result)
-                        await storage.complete_task(task_id, result=result)
-                    else:
-                        error = stderr.decode().strip()
-                        logger.warning("Task %s failed: %s", task_id, error)
-                        await storage.fail_task(task_id, error=error)
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-m",
+                    "lagomorph",
+                    "execute",
+                    str(task_id),
+                    env={**os.environ, "DATABASE_URL": database_url, "LAGOMORPH_WORKER_ID": worker_id},
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=task_timeout)
+                if proc.returncode == 0:
+                    result = stdout.decode().strip()
+                    logger.info("Task %s completed: %s", task_id, result)
+                    await storage.complete_task(task_id, result=result)
+                else:
+                    error = stderr.decode().strip()
+                    logger.warning("Task %s failed: %s", task_id, error)
+                    await storage.fail_task(task_id, error=error)
             except TimeoutError:
                 logger.warning("Task %s timed out after %ds", task_id, task_timeout)
                 await storage.fail_task(task_id, error="timed out")

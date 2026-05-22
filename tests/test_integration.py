@@ -167,6 +167,48 @@ async def test_missing_module_path():
         await storage.close()
 
 
+async def test_queues_html_with_data():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            await client.post(
+                "/api/enqueue",
+                json={"task_name": "t1", "queue_name": "test_q", "module_path": "m1"},
+            )
+            resp = await client.get("/api/queues/html")
+            assert resp.status_code == 200
+            assert "test_q" in resp.text
+            assert "pending" in resp.text
+    finally:
+        await storage.close()
+
+
+async def test_tasks_html_with_data():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            await client.post(
+                "/api/enqueue",
+                json={"task_name": "my_task", "queue_name": "test_q", "module_path": "m1"},
+            )
+            resp = await client.get("/api/tasks/html?limit=20")
+            assert resp.status_code == 200
+            assert "my_task" in resp.text
+            assert "test_q" in resp.text
+    finally:
+        await storage.close()
+
+
 async def test_dashboard_html_endpoint():
     storage = await Storage.create(DATABASE_URL)
     app = create_app(database_url=DATABASE_URL)

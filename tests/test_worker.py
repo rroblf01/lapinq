@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import signal
 
 from lagomorph.storage import Storage
@@ -101,6 +102,75 @@ async def test_heartbeat_loop_does_not_error_for_unknown_worker():
         await storage.close()
 
 
+def slow_func() -> None:
+    import time
+    time.sleep(999)
+
+
+async def test_process_task_timeout(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
+    import lagomorph.worker as wmod
+    storage = await Storage.create(DATABASE_URL)
+    try:
+        task_id = await storage.enqueue("slow_func", "test_timeout", "tests.test_worker", max_retries=0)
+
+        worker_task = asyncio.create_task(
+            wmod.run_worker(database_url=DATABASE_URL, concurrency=1, poll_interval=0.05, task_timeout=1)
+        )
+
+        await asyncio.sleep(1.5)
+
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
+
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "failed"
+        assert task["error"] == "timed out"
+    finally:
+        await storage.close()
+
+
+async def test_heartbeat_error_does_not_crash_loop(monkeypatch):
+    import lagomorph.worker as wmod
+    monkeypatch.setattr(wmod, "HEARTBEAT_INTERVAL", 0.05)
+
+    from lagomorph.worker import _heartbeat_loop
+    storage = await Storage.create(DATABASE_URL)
+    try:
+        import lagomorph.storage as smod
+        original = smod.Storage.heartbeat
+
+        call_count = 0
+
+        async def broken_heartbeat(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("broken")
+            return await original(smod.Storage, *a[1:], **kw)
+
+        monkeypatch.setattr(smod.Storage, "heartbeat", broken_heartbeat)
+
+        task_id = await storage.enqueue("hb_err", "default", "tests.test_worker")
+        await storage.claim_task("hb-err-worker")
+
+        shutdown_event = asyncio.Event()
+        hb_task = asyncio.create_task(_heartbeat_loop(storage, "hb-err-worker", shutdown_event))
+        await asyncio.sleep(0.2)
+        shutdown_event.set()
+        await hb_task
+
+        assert call_count >= 2
+
+        task = await storage.get_task(task_id)
+        assert task is not None
+        assert task["last_heartbeat"] is not None
+    finally:
+        await storage.close()
+
+
 async def test_run_worker_loop_processes_task(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
 
@@ -111,13 +181,14 @@ async def test_run_worker_loop_processes_task(monkeypatch):
         task_id = await storage.enqueue("add", "test_worker_loop", "tests.test_execute", args=[1, 2])
 
         worker_task = asyncio.create_task(
-            wmod.run_worker(database_url=DATABASE_URL, concurrency=2, poll_interval=0.05, task_timeout=10)
+            wmod.run_worker(database_url=DATABASE_URL, concurrency=2, poll_interval=0.05, task_timeout=30)
         )
 
         await asyncio.sleep(0.5)
 
         worker_task.cancel()
-        await worker_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
 
         task = await storage.get_task(task_id)
         assert task is not None

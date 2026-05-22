@@ -223,6 +223,14 @@ async def test_requeue_task():
         await storage.close()
 
 
+async def test_fail_task_nonexistent():
+    storage = await make_storage()
+    try:
+        await storage.fail_task(uuid.uuid4(), error="nope")
+    finally:
+        await storage.close()
+
+
 async def test_heartbeat():
     storage = await make_storage()
     try:

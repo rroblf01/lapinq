@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -38,11 +37,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: Any, max_requests: int, window_seconds: int = 60) -> None:
+    def __init__(self, app: Any, max_requests: int, window_seconds: int = 60, max_clients: int = 10000) -> None:
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._requests: dict[str, list[float]] = defaultdict(list)
+        self.max_clients = max_clients
+        self._requests: dict[str, list[float]] = {}
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if not request.url.path.startswith("/api/"):
@@ -50,11 +50,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
         window_start = now - self.window_seconds
-        self._requests[ip] = [t for t in self._requests[ip] if t > window_start]
-        if len(self._requests[ip]) >= self.max_requests:
+        self._evict(window_start)
+        timestamps = self._requests.get(ip, [])
+        timestamps = [t for t in timestamps if t > window_start]
+        if len(timestamps) >= self.max_requests:
             return JSONResponse({"error": "rate limit exceeded"}, status_code=429)
-        self._requests[ip].append(now)
+        timestamps.append(now)
+        self._requests[ip] = timestamps
         return await call_next(request)
+
+    def _evict(self, window_start: float) -> None:
+        stale = [ip for ip, ts in self._requests.items() if not any(t > window_start for t in ts)]
+        for ip in stale:
+            del self._requests[ip]
+        if len(self._requests) > self.max_clients:
+            sorted_ips = sorted(self._requests.items(), key=lambda x: max(x[1]), reverse=True)
+            self._requests = dict(sorted_ips[:self.max_clients])
 
 
 def create_app(

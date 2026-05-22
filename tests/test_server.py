@@ -311,6 +311,75 @@ async def test_auth_middleware_skips_dashboard():
         await storage.close()
 
 
+async def test_requeue_not_found():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(f"/api/tasks/{uuid.uuid4()}/requeue", json={})
+            assert resp.status_code == 404
+    finally:
+        await storage.close()
+
+
+async def test_requeue_not_failed():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.post(
+                "/api/enqueue",
+                json={"task_name": "r2", "queue_name": "q1", "module_path": "m1"},
+            )
+            task_id = resp.json()["task_id"]
+            resp = await client.post(f"/api/tasks/{task_id}/requeue", json={})
+            assert resp.status_code == 404
+    finally:
+        await storage.close()
+
+
+async def test_auth_does_not_block_options():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            resp = await client.options("/api/queues")
+            assert resp.status_code == 405
+    finally:
+        await storage.close()
+
+
+async def test_cors_preflight_with_auth():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            headers = {
+                "Origin": "http://example.com",
+                "Access-Control-Request-Method": "GET",
+            }
+            resp = await client.options("/api/queues", headers=headers)
+            assert resp.status_code == 200
+    finally:
+        await storage.close()
+
+
 async def test_rate_limiting_blocks_excess():
     storage = await Storage.create(DATABASE_URL)
     app = create_app(database_url=DATABASE_URL, rate_limit=3)

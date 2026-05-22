@@ -52,7 +52,7 @@ class Storage:
 
     @classmethod
     async def create(cls, database_url: str, max_size: int = 10) -> Storage:
-        pool = await asyncpg.create_pool(database_url, min_size=2, max_size=max_size)
+        pool = await asyncpg.create_pool(database_url, min_size=1, max_size=max_size)
         async with pool.acquire() as conn:
             await conn.execute(SQL_SCHEMA)
         return cls(pool)
