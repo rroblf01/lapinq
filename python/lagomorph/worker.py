@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import signal
@@ -64,10 +65,10 @@ async def run_worker(
             except TimeoutError:
                 logger.warning("Task %s timed out after %ds", task_id, task_timeout)
                 await storage.fail_task(task_id, error="timed out")
-            except Exception:
-                logger.exception("Unexpected error processing task %s", task_id)
+            except Exception as e:
+                logger.exception("Task %s failed: %s", task_id, e)
                 with contextlib.suppress(Exception):
-                    await storage.fail_task(task_id, error="unexpected worker error")
+                    await storage.fail_task(task_id, error=str(e))
         finally:
             semaphore.release()
 
@@ -127,14 +128,14 @@ async def run_worker_inline(
                     timeout=task_timeout,
                 )
                 logger.info("Task %s completed: %s", task_id, result)
-                await storage.complete_task(task_id, result=str(result))
+                await storage.complete_task(task_id, result=json.dumps(result))
             except TimeoutError:
                 logger.warning("Task %s timed out after %ds", task_id, task_timeout)
                 await storage.fail_task(task_id, error="timed out")
-            except Exception:
-                logger.exception("Task %s failed", task_id)
+            except Exception as e:
+                logger.exception("Task %s failed: %s", task_id, e)
                 with contextlib.suppress(Exception):
-                    await storage.fail_task(task_id, error="unexpected worker error")
+                    await storage.fail_task(task_id, error=str(e))
         finally:
             semaphore.release()
 
