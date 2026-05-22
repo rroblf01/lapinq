@@ -262,10 +262,25 @@ async def ws_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     storage: Storage = websocket.app.state.storage
     queue_filter: str | None = None
+    id_filter: str | None = None
+    last_cards: str | None = None
+    last_table: str | None = None
+    changed = True
 
     async def _send() -> None:
+        nonlocal last_cards, last_table, changed
         try:
-            if queue_filter:
+            if id_filter:
+                raw = id_filter.strip()
+                try:
+                    tid = uuid.UUID(raw)
+                    task = await storage.get_task(tid)
+                    tasks = [_serialize_task(task)] if task else []
+                except (ValueError, AttributeError):
+                    tasks = await storage.list_tasks(limit=20)
+                    tasks = [t for t in tasks if raw in str(t.get("id", ""))]
+                stats = await storage.queue_stats()
+            elif queue_filter:
                 stats = [s for s in await storage.queue_stats() if s["queue_name"] == queue_filter]
                 tasks = await storage.list_tasks(queue_name=queue_filter, limit=20)
             else:
@@ -273,7 +288,9 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 tasks = await storage.list_tasks(limit=20)
             cards = _queue_cards_html(stats)
             table = _tasks_table_html([_serialize_task(t) for t in tasks])
-            await websocket.send_json({"cards": cards, "table": table})
+            if cards != last_cards or table != last_table or changed:
+                last_cards, last_table, changed = cards, table, False
+                await websocket.send_json({"cards": cards, "table": table})
         except Exception:
             pass
 
@@ -283,7 +300,12 @@ async def ws_endpoint(websocket: WebSocket) -> None:
         while True:
             try:
                 data = await asyncio.wait_for(websocket.receive_json(), timeout=2)
-                queue_filter = data.get("queue") or None
+                if "queue" in data:
+                    queue_filter = data["queue"] or None
+                    changed = True
+                if "id" in data:
+                    id_filter = data["id"] or None
+                    changed = True
             except asyncio.TimeoutError:
                 pass
             await _send()

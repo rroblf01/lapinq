@@ -4,6 +4,125 @@ from typing import Any
 
 from starlette.responses import HTMLResponse
 
+CSS = """
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    min-height: 100vh;
+}
+.container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+.header h1 { font-size: 1.75rem; font-weight: 700; }
+.header h1 small { font-size: 0.875rem; font-weight: 400; color: #6b7280; margin-left: 0.5rem; }
+
+.filters { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.filters label { font-size: 0.8125rem; color: #6b7280; white-space: nowrap; }
+.filters select, .filters input {
+    padding: 0.375rem 0.625rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    background: #fff;
+    color: #1f2937;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.filters select:focus, .filters input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.card {
+    background: #fff;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    border: 1px solid #e5e7eb;
+}
+.card-name { font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.25rem; }
+.card-count { font-size: 1.5rem; font-weight: 700; }
+.card-stats { display: flex; gap: 1rem; margin-top: 0.75rem; font-size: 0.8125rem; flex-wrap: wrap; }
+.card-stats .c-pending { color: #ca8a04; }
+.card-stats .c-running { color: #2563eb; }
+.card-stats .c-done    { color: #16a34a; }
+.card-stats .c-failed  { color: #dc2626; }
+.card-stats span { white-space: nowrap; }
+.card-stats .num { font-weight: 600; }
+
+.table-wrap {
+    background: #fff;
+    border-radius: 0.75rem;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+}
+.table-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 1rem;
+    font-weight: 600;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+    text-align: left;
+    font-size: 0.6875rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+td {
+    padding: 0.75rem 1rem;
+    font-size: 0.8125rem;
+    border-bottom: 1px solid #f3f4f6;
+    color: #4b5563;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f9fafb; }
+td.name { color: #1f2937; font-weight: 500; }
+td.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; color: #6b7280; }
+td.trunc { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.err { color: #dc2626; }
+
+.badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    text-transform: capitalize;
+}
+.badge-pending   { color: #ca8a04; background: #fef9e7; }
+.badge-running   { color: #2563eb; background: #eef2ff; }
+.badge-completed { color: #16a34a; background: #ecfdf5; }
+.badge-failed    { color: #dc2626; background: #fef2f2; }
+
+.empty { padding: 1.5rem; text-align: center; color: #9ca3af; }
+.connecting { padding: 1.5rem; text-align: center; color: #9ca3af; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+.skeleton {
+    background: #fff;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    border: 1px solid #e5e7eb;
+    animation: pulse 2s ease-in-out infinite;
+}
+.skeleton .line { height: 0.75rem; background: #e5e7eb; border-radius: 0.25rem; margin-bottom: 0.75rem; }
+.skeleton .line:last-child { margin-bottom: 0; }
+.skeleton .w-24 { width: 6rem; }
+.skeleton .w-32 { width: 8rem; }
+"""
+
 
 def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
     queues = sorted({s["queue_name"] for s in (stats or [])})
@@ -18,61 +137,53 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lagomorph Dashboard</title>
-<script src="https://unpkg.com/htmx.org@2.0.10"></script>
-<script src="https://cdn.tailwindcss.com"></script>
+<style>{CSS}</style>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
-<div class="max-w-6xl mx-auto p-6">
-  <div class="flex items-center justify-between mb-8">
+<body>
+<div class="container">
+  <div class="header">
     <div>
-      <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Lagomorph Dashboard</h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Real-time task queue overview</p>
+      <h1>Lagomorph <small>Dashboard</small></h1>
     </div>
-    <div class="flex items-center gap-3">
-      <label class="text-sm text-gray-500 dark:text-gray-400">Queue:</label>
-      <select id="queue-filter" onchange="setFilter(this.value)"
-              class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
-        {options}
-      </select>
+    <div class="filters">
+      <label for="queue-filter">Queue:</label>
+      <select id="queue-filter" onchange="setFilter('queue',this.value)">{options}</select>
+      <label for="id-filter">Task ID:</label>
+      <input id="id-filter" type="text" placeholder="Filter by ID..." oninput="setFilter('id',this.value)">
     </div>
   </div>
 
-  <div id="queue-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-    <div class="animate-pulse bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-      <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 mb-3"></div>
-      <div class="h-8 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
-    </div>
+  <div id="queue-cards" class="cards-grid">
+    <div class="skeleton"><div class="line w-24"></div><div class="line w-32"></div></div>
   </div>
 
-  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Recent Tasks</h2>
-    </div>
-    <div id="tasks-table" class="overflow-x-auto">
-      <div class="p-6 text-center text-gray-400">Connecting...</div>
+  <div class="table-wrap">
+    <div class="table-header">Recent Tasks</div>
+    <div id="tasks-table">
+      <div class="connecting">Connecting...</div>
     </div>
   </div>
 </div>
 
 <script>
-  let ws;
-  function connect() {{
+let ws;
+function connect() {{
     ws = new WebSocket("ws://" + location.host + "/ws");
     ws.onmessage = function(e) {{
-      var data = JSON.parse(e.data);
-      if (data.cards) document.getElementById("queue-cards").innerHTML = data.cards;
-      if (data.table) document.getElementById("tasks-table").innerHTML = data.table;
+        var data = JSON.parse(e.data);
+        if (data.cards) document.getElementById("queue-cards").innerHTML = data.cards;
+        if (data.table) document.getElementById("tasks-table").innerHTML = data.table;
     }};
-    ws.onclose = function() {{
-      setTimeout(connect, 1000);
-    }};
-  }}
-  function setFilter(value) {{
+    ws.onclose = function() {{ setTimeout(connect, 1000); }};
+}}
+function setFilter(type, value) {{
     if (ws && ws.readyState === WebSocket.OPEN) {{
-      ws.send(JSON.stringify({{queue: value}}));
+        var msg = {{}};
+        msg[type] = value.trim();
+        ws.send(JSON.stringify(msg));
     }}
-  }}
-  connect();
+}}
+connect();
 </script>
 </body>
 </html>""",
@@ -90,20 +201,20 @@ def tasks_html(tasks: list[dict[str, Any]]) -> HTMLResponse:
 
 def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
     if not stats:
-        return '<div class="col-span-full text-center text-gray-400 py-8">No queues yet</div>'
+        return '<div class="empty" style="grid-column:1/-1">No queues yet</div>'
 
     cards = ""
     for q in stats:
         total = q["pending"] + q["running"]
         cards += f"""
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">{q["queue_name"]}</div>
-            <div class="text-2xl font-bold text-gray-800 dark:text-white">{total} active</div>
-            <div class="flex gap-4 mt-3 text-sm">
-                <span class="text-yellow-600"><span class="font-medium">{q["pending"]}</span> pending</span>
-                <span class="text-blue-600"><span class="font-medium">{q["running"]}</span> running</span>
-                <span class="text-green-600"><span class="font-medium">{q["completed"]}</span> done</span>
-                <span class="text-red-600"><span class="font-medium">{q["failed"]}</span> failed</span>
+        <div class="card">
+            <div class="card-name">{q["queue_name"]}</div>
+            <div class="card-count">{total} active</div>
+            <div class="card-stats">
+                <span class="c-pending"><span class="num">{q["pending"]}</span> pending</span>
+                <span class="c-running"><span class="num">{q["running"]}</span> running</span>
+                <span class="c-done"><span class="num">{q["completed"]}</span> done</span>
+                <span class="c-failed"><span class="num">{q["failed"]}</span> failed</span>
             </div>
         </div>"""
     return cards
@@ -111,7 +222,7 @@ def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
 
 def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
     if not tasks:
-        return '<div class="p-6 text-center text-gray-400">No tasks found</div>'
+        return '<div class="empty">No tasks found</div>'
 
     def _fmt(val: Any, maxlen: int = 60) -> str:
         if val is None:
@@ -131,40 +242,33 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
     for t in tasks:
         tid = str(t.get("id", ""))[:8]
         status = t.get("status", "unknown")
-        status_color = {
-            "pending": "text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20",
-            "running": "text-blue-600 bg-blue-50 dark:bg-blue-900/20",
-            "completed": "text-green-600 bg-green-50 dark:bg-green-900/20",
-            "failed": "text-red-600 bg-red-50 dark:bg-red-900/20",
-        }.get(status, "text-gray-600 bg-gray-50")
+        badge = f"badge-{status}" if status in ("pending", "running", "completed", "failed") else "badge-pending"
 
         args_str = _args_str(t)
         result_val = t.get("result")
         error_val = t.get("error")
 
         rows += f"""
-        <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
-            <td class="px-6 py-3 text-sm font-mono text-gray-500">{tid}...</td>
-            <td class="px-6 py-3 text-sm text-gray-800 dark:text-white">{t.get("task_name", "")}</td>
-            <td class="px-6 py-3 text-sm text-gray-500">{t.get("queue_name", "")}</td>
-            <td class="px-6 py-3 text-sm text-gray-500 max-w-[200px] truncate" title="{args_str}">{_fmt(args_str)}</td>
-            <td class="px-6 py-3 text-sm text-gray-500 max-w-[150px] truncate" title="{result_val or ""}">{_fmt(result_val)}</td>
-            <td class="px-6 py-3 text-sm text-red-600 max-w-[150px] truncate" title="{error_val or ""}">{_fmt(error_val)}</td>
-            <td class="px-6 py-3">
-                <span class="inline-block px-2 py-0.5 text-xs font-medium rounded-full {status_color}">{status}</span>
-            </td>
+        <tr>
+            <td class="mono">{tid}...</td>
+            <td class="name">{t.get("task_name", "")}</td>
+            <td>{t.get("queue_name", "")}</td>
+            <td class="trunc" title="{args_str}">{_fmt(args_str)}</td>
+            <td class="trunc" title="{result_val or ""}">{_fmt(result_val)}</td>
+            <td class="trunc err" title="{error_val or ""}">{_fmt(error_val)}</td>
+            <td><span class="badge {badge}">{status}</span></td>
         </tr>"""
     return f"""
-    <table class="w-full">
+    <table>
         <thead>
-            <tr class="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
-                <th class="px-6 py-3">ID</th>
-                <th class="px-6 py-3">Task</th>
-                <th class="px-6 py-3">Queue</th>
-                <th class="px-6 py-3">Args</th>
-                <th class="px-6 py-3">Result</th>
-                <th class="px-6 py-3">Error</th>
-                <th class="px-6 py-3">Status</th>
+            <tr>
+                <th>ID</th>
+                <th>Task</th>
+                <th>Queue</th>
+                <th>Args</th>
+                <th>Result</th>
+                <th>Error</th>
+                <th>Status</th>
             </tr>
         </thead>
         <tbody>{rows}</tbody>
