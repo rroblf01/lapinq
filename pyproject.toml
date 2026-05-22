@@ -67,4 +67,5 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.11.0",
     "ty>=0.0.35",
+    "testcontainers>=4.10.0",
 ]
