@@ -1,7 +1,7 @@
 [package]
-name = "lagomorph-worker"
+name = "lapinq-worker"
 version = "0.1.0"
-description = "Lagomorph Rust worker - polls PostgreSQL and executes Python tasks"
+description = "Lapinq Rust worker - polls PostgreSQL and executes Python tasks"
 edition = "2021"
 
 [lib]
@@ -9,7 +9,7 @@ name = "_worker"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "lagomorph-worker"
+name = "lapinq-worker"
 path = "src/main.rs"
 
 [dependencies]

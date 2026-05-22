@@ -5,7 +5,7 @@ import os
 import sys
 
 import pytest
-from lagomorph.storage import SQL_SCHEMA
+from lapinq.storage import SQL_SCHEMA
 
 DATABASE_URL: str | None = os.environ.get("DATABASE_URL")
 
@@ -63,7 +63,7 @@ async def cleanup_db(request):
     assert DATABASE_URL is not None
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        await conn.execute("DELETE FROM lagomorph_tasks")
+        await conn.execute("DELETE FROM lapinq_tasks")
     finally:
         await conn.close()
     yield

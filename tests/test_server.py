@@ -4,10 +4,10 @@ import asyncio
 import uuid
 
 import httpx
-from lagomorph.server import create_app
-from lagomorph.storage import Storage
+from lapinq.server import create_app
+from lapinq.storage import Storage
 
-DATABASE_URL = "postgresql://postgres:test@localhost:5432/lagomorph_test"
+DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
 
 
 async def test_health():
@@ -244,9 +244,9 @@ async def test_metrics_endpoint():
             resp = await client.get("/metrics")
             assert resp.status_code == 200
             text = resp.text
-            assert "# HELP lagomorph_tasks" in text
-            assert "# TYPE lagomorph_tasks gauge" in text
-            assert 'lagomorph_tasks{queue="q1",status="pending"} 1' in text
+            assert "# HELP lapinq_tasks" in text
+            assert "# TYPE lapinq_tasks gauge" in text
+            assert 'lapinq_tasks{queue="q1",status="pending"} 1' in text
     finally:
         await storage.close()
 

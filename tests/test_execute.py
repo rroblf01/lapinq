@@ -4,10 +4,10 @@ import asyncio
 import os
 import sys
 
-from lagomorph.execute import execute_task_inline
-from lagomorph.storage import Storage
+from lapinq.execute import execute_task_inline
+from lapinq.storage import Storage
 
-DATABASE_URL = "postgresql://postgres:test@localhost:5432/lagomorph_test"
+DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
 
 
 def add(a: int, b: int) -> int:
@@ -28,7 +28,7 @@ async def test_execute_success():
         task_id = await storage.enqueue("add", "default", "tests.test_execute", args=[2, 3])
         assert task_id is not None
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "lagomorph", "execute", str(task_id),
+            sys.executable, "-m", "lapinq", "execute", str(task_id),
             env={**os.environ, "DATABASE_URL": DATABASE_URL},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -46,7 +46,7 @@ async def test_execute_async_function():
         task_id = await storage.enqueue("async_echo", "default", "tests.test_execute", args=["hello"])
         assert task_id is not None
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "lagomorph", "execute", str(task_id),
+            sys.executable, "-m", "lapinq", "execute", str(task_id),
             env={**os.environ, "DATABASE_URL": DATABASE_URL},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -62,7 +62,7 @@ async def test_execute_task_not_found():
     import uuid
     fake_id = str(uuid.uuid4())
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-m", "lagomorph", "execute", fake_id,
+        sys.executable, "-m", "lapinq", "execute", fake_id,
         env={**os.environ, "DATABASE_URL": DATABASE_URL},
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -123,7 +123,7 @@ async def test_execute_inline_function_raises():
 
 
 async def test_rust_executor_available():
-    from lagomorph._worker import execute_task_inline as rust_exec  # ty: ignore
+    from lapinq._worker import execute_task_inline as rust_exec  # ty: ignore
 
     task_data = {
         "module_path": "tests.test_execute",
@@ -136,7 +136,7 @@ async def test_rust_executor_available():
 
 
 async def test_rust_executor_rejects_async():
-    from lagomorph._worker import execute_task_inline as rust_exec  # ty: ignore
+    from lapinq._worker import execute_task_inline as rust_exec  # ty: ignore
 
     task_data = {
         "module_path": "tests.test_execute",
@@ -152,7 +152,7 @@ async def test_rust_executor_rejects_async():
 
 
 async def test_rust_executor_fallback_to_python_for_async():
-    from lagomorph.execute import execute_task_inline
+    from lapinq.execute import execute_task_inline
 
     task_data = {
         "module_path": "tests.test_execute",
@@ -165,7 +165,7 @@ async def test_rust_executor_fallback_to_python_for_async():
 
 
 async def test_execute_inline_missing_module():
-    from lagomorph.execute import execute_task_inline
+    from lapinq.execute import execute_task_inline
 
     task_data = {
         "module_path": "tests.does_not_exist",
@@ -181,7 +181,7 @@ async def test_execute_inline_missing_module():
 
 
 async def test_execute_inline_missing_args_key():
-    from lagomorph.execute import execute_task_inline
+    from lapinq.execute import execute_task_inline
 
     task_data = {
         "module_path": "tests.test_execute",
@@ -200,7 +200,7 @@ async def test_execute_function_raises():
         task_id = await storage.enqueue("fail_func", "default", "tests.test_execute")
         assert task_id is not None
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "lagomorph", "execute", str(task_id),
+            sys.executable, "-m", "lapinq", "execute", str(task_id),
             env={**os.environ, "DATABASE_URL": DATABASE_URL},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

@@ -16,12 +16,12 @@
 - **Concurrencia configurable**: Controla cuántas tareas se ejecutan simultáneamente
 - **Worker Rust** (opcional): Binario standalone de alto rendimiento
 - **Autenticación y rate limiting**: Autenticación opcional por API key y limitación por IP
-- **Paquete PyPI**: Instala con `pip install lagomorph`
+- **Paquete PyPI**: Instala con `pip install lapinq`
 
 ## Inicio Rápido
 
 ```python
-from lagomorph import TaskQueue
+from lapinq import TaskQueue
 
 tasks = TaskQueue(server_url="http://localhost:8001", queue_name="video")
 
@@ -60,7 +60,7 @@ O con worker Rust separado para producción:
 └──────────────┘               ┌──────────────────┐     │
                                │  Worker Rust     │ ◄───┘
                                │  (binario        │
-                               │   lagomorph-     │
+                               │   lapinq-     │
                                │   worker)        │
                                └──────────────────┘
 ```

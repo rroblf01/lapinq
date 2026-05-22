@@ -4,7 +4,7 @@ import json
 import logging
 import os
 
-from lagomorph.log import JSONFormatter, configure_logging
+from lapinq.log import JSONFormatter, configure_logging
 
 
 def test_json_formatter_no_exc():

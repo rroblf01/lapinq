@@ -7,7 +7,7 @@ La clase `TaskQueue` es el punto de entrada principal para definir y encolar tar
 ### Configuración
 
 ```python
-from lagomorph import TaskQueue
+from lapinq import TaskQueue
 
 tasks = TaskQueue(
     server_url="http://worker:8001",
@@ -19,7 +19,7 @@ tasks = TaskQueue(
 ### AsyncTaskQueue
 
 ```python
-from lagomorph import AsyncTaskQueue
+from lapinq import AsyncTaskQueue
 
 tasks = AsyncTaskQueue(
     server_url="http://worker:8001",
@@ -173,7 +173,7 @@ Características:
 Activa la limpieza automática de tareas expiradas:
 
 ```bash
-python -m lagomorph server --worker --cleanup-interval 300
+python -m lapinq server --worker --cleanup-interval 300
 ```
 
 Esto elimina las tareas donde `created_at + ttl_seconds < now()` cada 5 minutos.

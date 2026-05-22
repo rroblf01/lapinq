@@ -8,7 +8,7 @@ Cliente síncrono para definir y encolar tareas.
 
 | Parámetro | Tipo | Por defecto | Descripción |
 |-----------|------|-------------|-------------|
-| `server_url` | `str` | `"http://127.0.0.1:8001"` | URL del servidor lagomorph |
+| `server_url` | `str` | `"http://127.0.0.1:8001"` | URL del servidor lapinq |
 | `queue_name` | `str` | `"default"` | Nombre de cola por defecto |
 | `timeout` | `float` | `30.0` | Timeout de petición HTTP en segundos |
 
@@ -53,7 +53,7 @@ Cierra la conexión HTTP asíncrona subyacente.
 ## Ejemplos
 
 ```python
-from lagomorph import TaskQueue, AsyncTaskQueue
+from lapinq import TaskQueue, AsyncTaskQueue
 
 # Cliente síncrono
 tasks = TaskQueue(server_url="http://localhost:8001")

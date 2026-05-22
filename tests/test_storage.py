@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import uuid
 
-from lagomorph.storage import Storage
+from lapinq.storage import Storage
 
-DATABASE_URL = "postgresql://postgres:test@localhost:5432/lagomorph_test"
+DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
 
 
 async def make_storage() -> Storage:
@@ -155,7 +155,7 @@ async def test_recover_stale_tasks():
         await storage.claim_task("dead-worker")
         async with storage.pool.acquire() as conn:
             await conn.execute(
-                "UPDATE lagomorph_tasks SET started_at = now() - interval '1 hour' WHERE id = $1",
+                "UPDATE lapinq_tasks SET started_at = now() - interval '1 hour' WHERE id = $1",
                 task_id,
             )
         recovered = await storage.recover_stale_tasks(max_running_seconds=300)
@@ -168,7 +168,7 @@ async def test_recover_stale_tasks():
 
 
 async def test_retry_backoff_seconds():
-    from lagomorph.storage import _retry_backoff_seconds
+    from lapinq.storage import _retry_backoff_seconds
     assert _retry_backoff_seconds(0) == 0
     assert _retry_backoff_seconds(1) == 10
     assert _retry_backoff_seconds(2) == 30
@@ -184,7 +184,7 @@ async def test_skipped_locked_task():
         await storage.enqueue("t2", "q1", "m1")
 
         async with storage.pool.acquire() as conn:
-            await conn.execute("UPDATE lagomorph_tasks SET status = 'running' WHERE id = $1", id1)
+            await conn.execute("UPDATE lapinq_tasks SET status = 'running' WHERE id = $1", id1)
 
         claimed = await storage.claim_task("worker-1", statuses=("pending",))
         assert claimed is not None

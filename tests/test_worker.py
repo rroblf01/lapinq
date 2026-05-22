@@ -4,9 +4,9 @@ import asyncio
 import contextlib
 import signal
 
-from lagomorph.storage import Storage
+from lapinq.storage import Storage
 
-DATABASE_URL = "postgresql://postgres:test@localhost:5432/lagomorph_test"
+DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
 
 
 async def test_worker_claims_and_processes_task():
@@ -37,7 +37,7 @@ async def test_execute_imports_and_runs_function():
 
 
 async def test_execute_module_loads_function():
-    from lagomorph.storage import Storage
+    from lapinq.storage import Storage
 
     storage = await Storage.create(DATABASE_URL)
     try:
@@ -58,7 +58,7 @@ async def test_execute_module_loads_function():
 
 
 async def test_handle_signal_sets_event():
-    from lagomorph.worker import _handle_signal
+    from lapinq.worker import _handle_signal
 
     event = asyncio.Event()
     _handle_signal(signal.SIGTERM, event, "test-wid")
@@ -66,7 +66,7 @@ async def test_handle_signal_sets_event():
 
 
 async def test_heartbeat_loop_updates_on_each_iteration():
-    from lagomorph.worker import _heartbeat_loop
+    from lapinq.worker import _heartbeat_loop
 
     storage = await Storage.create(DATABASE_URL)
     try:
@@ -92,7 +92,7 @@ async def test_heartbeat_loop_updates_on_each_iteration():
 
 
 async def test_heartbeat_loop_does_not_error_for_unknown_worker():
-    from lagomorph.worker import _heartbeat_loop
+    from lapinq.worker import _heartbeat_loop
 
     shutdown_event = asyncio.Event()
     storage = await Storage.create(DATABASE_URL)
@@ -112,7 +112,7 @@ def slow_func() -> None:
 
 async def test_process_task_timeout(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
-    import lagomorph.worker as wmod
+    import lapinq.worker as wmod
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("slow_func", "test_timeout", "tests.test_worker", max_retries=0)
@@ -137,13 +137,13 @@ async def test_process_task_timeout(monkeypatch):
 
 
 async def test_heartbeat_error_does_not_crash_loop(monkeypatch):
-    import lagomorph.worker as wmod
+    import lapinq.worker as wmod
     monkeypatch.setattr(wmod, "HEARTBEAT_INTERVAL", 0.05)
 
-    from lagomorph.worker import _heartbeat_loop
+    from lapinq.worker import _heartbeat_loop
     storage = await Storage.create(DATABASE_URL)
     try:
-        import lagomorph.storage as smod
+        import lapinq.storage as smod
         original = smod.Storage.heartbeat
 
         call_count = 0
@@ -177,7 +177,7 @@ async def test_heartbeat_error_does_not_crash_loop(monkeypatch):
 
 
 async def test_run_worker_inline_processes_task(monkeypatch):
-    import lagomorph.worker as wmod
+    import lapinq.worker as wmod
 
     storage = await Storage.create(DATABASE_URL)
     try:
@@ -203,7 +203,7 @@ async def test_run_worker_inline_processes_task(monkeypatch):
 
 
 async def test_run_worker_inline_handles_timeout(monkeypatch):
-    import lagomorph.worker as wmod
+    import lapinq.worker as wmod
 
     storage = await Storage.create(DATABASE_URL)
     try:
@@ -231,7 +231,7 @@ async def test_run_worker_inline_handles_timeout(monkeypatch):
 async def test_run_worker_loop_processes_task(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", DATABASE_URL)
 
-    import lagomorph.worker as wmod
+    import lapinq.worker as wmod
 
     storage = await Storage.create(DATABASE_URL)
     try:

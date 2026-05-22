@@ -6,13 +6,13 @@ import os
 
 import httpx
 from fastapi import FastAPI
-from lagomorph.client import AsyncTaskQueue
+from lapinq.client import AsyncTaskQueue
 
-logger = logging.getLogger("lagomorph.example")
+logger = logging.getLogger("lapinq.example")
 
 app = FastAPI(title="Lagomorph Example")
 
-server_url = os.environ.get("LAGOMORPH_SERVER_URL", "http://lagomorph-server:8001")
+server_url = os.environ.get("LAGOMORPH_SERVER_URL", "http://lapinq-server:8001")
 queue = AsyncTaskQueue(server_url=server_url, queue_name="example")
 api_client = httpx.AsyncClient(base_url=server_url)
 

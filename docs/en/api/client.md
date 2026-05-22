@@ -8,7 +8,7 @@ Synchronous client for defining and enqueuing tasks.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `server_url` | `str` | `"http://127.0.0.1:8001"` | URL of the lagomorph server |
+| `server_url` | `str` | `"http://127.0.0.1:8001"` | URL of the lapinq server |
 | `queue_name` | `str` | `"default"` | Default queue name |
 | `timeout` | `float` | `30.0` | HTTP request timeout in seconds |
 
@@ -53,7 +53,7 @@ Close the underlying async HTTP client connection.
 ## Examples
 
 ```python
-from lagomorph import TaskQueue, AsyncTaskQueue
+from lapinq import TaskQueue, AsyncTaskQueue
 
 # Sync client
 tasks = TaskQueue(server_url="http://localhost:8001")

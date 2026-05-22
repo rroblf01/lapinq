@@ -6,7 +6,7 @@ Crea una aplicación Starlette ASGI con la API REST, dashboard y worker inline o
 
 | Parámetro | Tipo | Por defecto | Descripción |
 |-----------|------|-------------|-------------|
-| `database_url` | `str` | `"postgresql://localhost:5432/lagomorph"` | URL de conexión PostgreSQL |
+| `database_url` | `str` | `"postgresql://localhost:5432/lapinq"` | URL de conexión PostgreSQL |
 | `api_key` | `str \| None` | `None` | API key para el middleware de autenticación |
 | `rate_limit` | `int` | `0` | Máx. peticiones/min por IP (`0` = desactivado) |
 | `worker` | `bool` | `False` | Ejecutar worker inline en el mismo proceso |
@@ -101,12 +101,12 @@ Health check. Devuelve `{"status": "ok", "database": "connected"}`.
 Métricas en formato Prometheus:
 
 ```
-# HELP lagomorph_tasks Task counts by queue and status
-# TYPE lagomorph_tasks gauge
-lagomorph_tasks{queue="default",status="pending"} 5
-lagomorph_tasks{queue="default",status="running"} 2
-lagomorph_tasks{queue="default",status="completed"} 100
-lagomorph_tasks{queue="default",status="failed"} 1
+# HELP lapinq_tasks Task counts by queue and status
+# TYPE lapinq_tasks gauge
+lapinq_tasks{queue="default",status="pending"} 5
+lapinq_tasks{queue="default",status="running"} 2
+lapinq_tasks{queue="default",status="completed"} 100
+lapinq_tasks{queue="default",status="failed"} 1
 ```
 
 ### `GET /` — Dashboard
@@ -141,7 +141,7 @@ Configura `LAGOMORPH_RATE_LIMIT` o pasa `rate_limit` a `create_app()`. Limita pe
 ## CLI
 
 ```bash
-python -m lagomorph server \
+python -m lapinq server \
   --host 0.0.0.0 \
   --port 8001 \
   --database-url postgresql://user:pass@localhost:5432/db \

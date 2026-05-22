@@ -19,11 +19,11 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from lagomorph.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
-from lagomorph.storage import Storage
-from lagomorph.worker import run_worker_inline
+from lapinq.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
+from lapinq.storage import Storage
+from lapinq.worker import run_worker_inline
 
-logger = logging.getLogger("lagomorph.server")
+logger = logging.getLogger("lapinq.server")
 
 MAX_PAYLOAD_SIZE = 1024 * 100
 
@@ -87,7 +87,7 @@ async def _cleanup_loop(storage: Storage, interval: float) -> None:
 
 
 def create_app(
-    database_url: str = "postgresql://localhost:5432/lagomorph",
+    database_url: str = "postgresql://localhost:5432/lapinq",
     api_key: str | None = None,
     rate_limit: int = 0,
     worker: bool = False,
@@ -414,13 +414,13 @@ async def metrics(request: Request) -> Response:
     storage: Storage = request.app.state.storage
     stats = await storage.queue_stats()
     lines: list[str] = [
-        "# HELP lagomorph_tasks Task counts by queue and status",
-        "# TYPE lagomorph_tasks gauge",
+        "# HELP lapinq_tasks Task counts by queue and status",
+        "# TYPE lapinq_tasks gauge",
     ]
     for q in stats:
         for status in ("pending", "running", "completed", "failed"):
             lines.append(
-                f'lagomorph_tasks{{queue="{q["queue_name"]}",status="{status}"}} {q[status]}'
+                f'lapinq_tasks{{queue="{q["queue_name"]}",status="{status}"}} {q[status]}'
             )
     lines.append("")
     return Response("\n".join(lines), media_type="text/plain; version=0.0.4")

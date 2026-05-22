@@ -9,23 +9,23 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: lagomorph
+      POSTGRES_USER: lapinq
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-      POSTGRES_DB: lagomorph
+      POSTGRES_DB: lapinq
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lagomorph"]
+      test: ["CMD-SHELL", "pg_isready -U lapinq"]
 
-  lagomorph:
+  lapinq:
     build:
       context: .
-      dockerfile: Dockerfile.lagomorph
-    command: python -m lagomorph server --worker --cleanup-interval 300 --port 8001
+      dockerfile: Dockerfile.lapinq
+    command: python -m lapinq server --worker --cleanup-interval 300 --port 8001
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql://lagomorph:${DB_PASSWORD:-changeme}@db:5432/lagomorph
+      - DATABASE_URL=postgresql://lapinq:${DB_PASSWORD:-changeme}@db:5432/lapinq
     depends_on:
       db:
         condition: service_healthy
@@ -43,23 +43,23 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: lagomorph
+      POSTGRES_USER: lapinq
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-      POSTGRES_DB: lagomorph
+      POSTGRES_DB: lapinq
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lagomorph"]
+      test: ["CMD-SHELL", "pg_isready -U lapinq"]
 
-  lagomorph:
+  lapinq:
     build:
       context: .
-      dockerfile: Dockerfile.lagomorph
-    command: python -m lagomorph server --port 8001
+      dockerfile: Dockerfile.lapinq
+    command: python -m lapinq server --port 8001
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql://lagomorph:${DB_PASSWORD:-changeme}@db:5432/lagomorph
+      - DATABASE_URL=postgresql://lapinq:${DB_PASSWORD:-changeme}@db:5432/lapinq
     depends_on:
       db:
         condition: service_healthy
@@ -67,10 +67,10 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.lagomorph
-    command: lagomorph-worker --database-url postgresql://lagomorph:${DB_PASSWORD:-changeme}@db:5432/lagomorph --concurrency 4
+      dockerfile: Dockerfile.lapinq
+    command: lapinq-worker --database-url postgresql://lapinq:${DB_PASSWORD:-changeme}@db:5432/lapinq --concurrency 4
     environment:
-      - DATABASE_URL=postgresql://lagomorph:${DB_PASSWORD:-changeme}@db:5432/lagomorph
+      - DATABASE_URL=postgresql://lapinq:${DB_PASSWORD:-changeme}@db:5432/lapinq
     deploy:
       replicas: 2
     depends_on:
@@ -81,7 +81,7 @@ volumes:
   postgres_data:
 ```
 
-## Dockerfile.lagomorph
+## Dockerfile.lapinq
 
 ```dockerfile
 FROM python:3.14-slim-bookworm
@@ -91,9 +91,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/ricardorobles/lagomorph:latest /usr/local/bin/lagomorph-worker /usr/local/bin/
+COPY --from=ghcr.io/ricardorobles/lapinq:latest /usr/local/bin/lapinq-worker /usr/local/bin/
 COPY requirements.txt .
-RUN pip install --no-cache-dir lagomorph
+RUN pip install --no-cache-dir lapinq
 
 COPY . .
 ```
@@ -119,18 +119,18 @@ Each worker independently claims tasks using `FOR UPDATE SKIP LOCKED`, so they s
 
 ```bash
 # Run multiple Rust workers
-lagomorph-worker --database-url $DATABASE_URL --concurrency 4
-lagomorph-worker --database-url $DATABASE_URL --concurrency 4
+lapinq-worker --database-url $DATABASE_URL --concurrency 4
+lapinq-worker --database-url $DATABASE_URL --concurrency 4
 ```
 
 ### Auth & Rate Limiting
 
 ```bash
 # Enable API key auth
-LAGOMORPH_API_KEY=my-secret-key python -m lagomorph server
+LAGOMORPH_API_KEY=my-secret-key python -m lapinq server
 
 # Enable rate limiting (60 requests/min per IP)
-LAGOMORPH_RATE_LIMIT=60 python -m lagomorph server
+LAGOMORPH_RATE_LIMIT=60 python -m lapinq server
 ```
 
 ### Monitoring

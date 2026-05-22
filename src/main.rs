@@ -9,9 +9,9 @@ use uuid::Uuid;
 use _worker::{claim_task, complete_task_in_db, connect_db, ensure_schema, fail_task_in_db, Task};
 
 #[derive(Parser, Debug)]
-#[command(name = "lagomorph-worker", version)]
+#[command(name = "lapinq-worker", version)]
 struct Args {
-    #[arg(long, env = "DATABASE_URL", default_value = "postgresql://localhost:5432/lagomorph")]
+    #[arg(long, env = "DATABASE_URL", default_value = "postgresql://localhost:5432/lapinq")]
     database_url: String,
 
     #[arg(long, default_value = "4")]
@@ -119,7 +119,7 @@ fn python_interpreter() -> String {
 
 async fn run_python_subprocess(task: &Task) -> Result<(String, String), (String, i32, i32)> {
     let child = Command::new(python_interpreter())
-        .args(["-m", "lagomorph", "execute", &task.id.to_string()])
+        .args(["-m", "lapinq", "execute", &task.id.to_string()])
         .env("DATABASE_URL", std::env::var("DATABASE_URL").unwrap_or_default())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

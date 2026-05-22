@@ -5,14 +5,14 @@
 ### Desde PyPI
 
 ```bash
-pip install lagomorph
+pip install lapinq
 ```
 
 ### Desde el código fuente
 
 ```bash
-git clone https://github.com/ricardorobles/lagomorph.git
-cd lagomorph
+git clone https://github.com/ricardorobles/lapinq.git
+cd lapinq
 pip install maturin
 maturin develop
 ```
@@ -20,10 +20,10 @@ maturin develop
 ## Iniciar PostgreSQL
 
 ```bash
-docker run -d --name lagomorph-db \
-  -e POSTGRES_USER=lagomorph \
-  -e POSTGRES_PASSWORD=lagomorph \
-  -e POSTGRES_DB=lagomorph \
+docker run -d --name lapinq-db \
+  -e POSTGRES_USER=lapinq \
+  -e POSTGRES_PASSWORD=lapinq \
+  -e POSTGRES_DB=lapinq \
   -p 5432:5432 \
   postgres:16-alpine
 ```
@@ -33,7 +33,7 @@ docker run -d --name lagomorph-db \
 Ejecuta el servidor HTTP y el worker de tareas en un solo proceso:
 
 ```bash
-python -m lagomorph server --worker --port 8001
+python -m lapinq server --worker --port 8001
 ```
 
 Esta es la forma más fácil de empezar. El worker interno ejecuta las tareas en el mismo proceso usando el ejecutor Rust (PyO3) para funciones síncronas.
@@ -43,19 +43,19 @@ Esta es la forma más fácil de empezar. El worker interno ejecuta las tareas en
 ### Terminal 1 — Servidor:
 
 ```bash
-python -m lagomorph server --port 8001
+python -m lapinq server --port 8001
 ```
 
 ### Terminal 2 — Worker Python:
 
 ```bash
-python -m lagomorph worker --concurrency 4
+python -m lapinq worker --concurrency 4
 ```
 
 ### Terminal 2 — Worker Rust (producción):
 
 ```bash
-lagomorph-worker --database-url postgresql://lagomorph:lagomorph@localhost:5432/lagomorph --concurrency 4
+lapinq-worker --database-url postgresql://lapinq:lapinq@localhost:5432/lapinq --concurrency 4
 ```
 
 ## Dashboard
@@ -65,7 +65,7 @@ Abre [http://localhost:8001](http://localhost:8001) en tu navegador. El dashboar
 ## Tu Primera Tarea
 
 ```python
-from lagomorph import TaskQueue
+from lapinq import TaskQueue
 
 tasks = TaskQueue(server_url="http://localhost:8001")
 
@@ -81,7 +81,7 @@ print(respuesta.json())  # {"task_id": "..."}
 ## Cliente Asíncrono
 
 ```python
-from lagomorph import AsyncTaskQueue
+from lapinq import AsyncTaskQueue
 
 async def main():
     tasks = AsyncTaskQueue(server_url="http://localhost:8001")

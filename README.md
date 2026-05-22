@@ -2,9 +2,9 @@
 
 **A lightweight task queue with PostgreSQL backend — replacing Celery + RabbitMQ with a single container.**
 
-[![CI](https://github.com/ricardorobles/lagomorph/actions/workflows/ci.yml/badge.svg)](https://github.com/ricardorobles/lagomorph/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/lagomorph)](https://pypi.org/project/lagomorph/)
-[![Python](https://img.shields.io/pypi/pyversions/lagomorph)](https://pypi.org/project/lagomorph/)
+[![CI](https://github.com/ricardorobles/lapinq/actions/workflows/ci.yml/badge.svg)](https://github.com/ricardorobles/lapinq/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/lapinq)](https://pypi.org/project/lapinq/)
+[![Python](https://img.shields.io/pypi/pyversions/lapinq)](https://pypi.org/project/lapinq/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ---
@@ -21,7 +21,7 @@ Celery + RabbitMQ is powerful but heavyweight for many projects. Lagomorph repla
 ## Quick Start
 
 ```python
-from lagomorph import TaskQueue
+from lapinq import TaskQueue
 
 tasks = TaskQueue(server_url="http://localhost:8001", queue_name="video")
 
@@ -36,14 +36,14 @@ procesar_video(video_id=1, codec="h264")
 ## Installation
 
 ```bash
-pip install lagomorph
+pip install lapinq
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/ricardorobles/lagomorph.git
-cd lagomorph
+git clone https://github.com/ricardorobles/lapinq.git
+cd lapinq
 pip install maturin
 maturin develop
 ```
@@ -53,10 +53,10 @@ maturin develop
 ### 1. Start PostgreSQL
 
 ```bash
-docker run -d --name lagomorph-pg \
-  -e POSTGRES_USER=lagomorph \
+docker run -d --name lapinq-pg \
+  -e POSTGRES_USER=lapinq \
   -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_DB=lagomorph \
+  -e POSTGRES_DB=lapinq \
   -p 5432:5432 \
   postgres:16-alpine
 ```
@@ -64,17 +64,17 @@ docker run -d --name lagomorph-pg \
 ### 2. Start the server
 
 ```bash
-lagomorph server --host 0.0.0.0 --port 8001
+lapinq server --host 0.0.0.0 --port 8001
 ```
 
 ### 3. Start a worker
 
 ```bash
 # Python worker (development)
-lagomorph worker --concurrency 4
+lapinq worker --concurrency 4
 
 # Or Rust worker (production, ~20x faster polling)
-lagomorph-worker --database-url postgresql://lagomorph:secret@localhost:5432/lagomorph --concurrency 4
+lapinq-worker --database-url postgresql://lapinq:secret@localhost:5432/lapinq --concurrency 4
 ```
 
 ### 4. Open the dashboard
@@ -122,7 +122,7 @@ Visit **http://localhost:8001/dashboard** to monitor queues and tasks in real ti
 
 ## Documentation
 
-Full documentation is available at **[https://ricardorobles.github.io/lagomorph](https://ricardorobles.github.io/lagomorph)**
+Full documentation is available at **[https://ricardorobles.github.io/lapinq](https://ricardorobles.github.io/lapinq)**
 
 ## Docker
 
@@ -132,7 +132,7 @@ docker compose up -d
 
 This starts:
 - **PostgreSQL** — database engine
-- **Server** — lagomorph REST API + dashboard
+- **Server** — lapinq REST API + dashboard
 - **Rust Worker** — high-performance task executor (requires `--profile rust`)
 
 ## Development
@@ -184,7 +184,7 @@ uv run pytest
 
 ## Database Schema
 
-All queue state lives in a single table `lagomorph_tasks`:
+All queue state lives in a single table `lapinq_tasks`:
 
 | Column | Type | Default | Description |
 |---|---|---|---|
@@ -216,7 +216,7 @@ Key indexes:
 
 | Variable | Default | Used by | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | `postgresql://localhost:5432/lagomorph` | server, worker, execute | PostgreSQL connection string |
+| `DATABASE_URL` | `postgresql://localhost:5432/lapinq` | server, worker, execute | PostgreSQL connection string |
 | `LAGOMORPH_API_KEY` | *(none — auth disabled)* | server | Enables `X-API-Key` auth middleware |
 | `LAGOMORPH_RATE_LIMIT` | `0` (disabled) | server | Max requests per minute per IP |
 | `LAGOMORPH_JSON_LOG` | `0` (text logging) | server, worker, execute | Set to `1` for structured JSON |

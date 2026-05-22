@@ -4,7 +4,7 @@ from unittest import mock
 
 import httpx
 import pytest
-from lagomorph.client import AsyncTaskQueue, TaskQueue
+from lapinq.client import AsyncTaskQueue, TaskQueue
 
 
 @pytest.fixture
@@ -183,7 +183,7 @@ async def test_async_task_no_parens():
 
 
 def test_build_payload_ttl_seconds():
-    from lagomorph.client import _build_payload
+    from lapinq.client import _build_payload
 
     payload = _build_payload(
         lambda: None, "fn", "q", "m", None, None, 0, 3600, (1,), {},
@@ -197,7 +197,7 @@ def test_build_payload_ttl_seconds():
 
 
 def test_build_payload_max_retries_omitted():
-    from lagomorph.client import _build_payload
+    from lapinq.client import _build_payload
 
     payload = _build_payload(
         lambda: None, "fn", "q", "m", None, None, 0, None, (), {},

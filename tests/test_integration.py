@@ -4,11 +4,11 @@ import uuid
 from unittest import mock
 
 import httpx
-from lagomorph.client import TaskQueue
-from lagomorph.server import create_app
-from lagomorph.storage import Storage
+from lapinq.client import TaskQueue
+from lapinq.server import create_app
+from lapinq.storage import Storage
 
-DATABASE_URL = "postgresql://postgres:test@localhost:5432/lagomorph_test"
+DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
 
 
 async def test_full_flow_enqueue_and_server_storage():
@@ -232,7 +232,7 @@ async def test_dashboard_html_endpoint():
 
 
 async def test_empty_queues_html():
-    from lagomorph.dashboard import _queue_cards_html
+    from lapinq.dashboard import _queue_cards_html
 
     html = _queue_cards_html([])
     assert "No queues yet" in html
@@ -240,14 +240,14 @@ async def test_empty_queues_html():
 
 
 async def test_empty_tasks_html():
-    from lagomorph.dashboard import _tasks_table_html
+    from lapinq.dashboard import _tasks_table_html
 
     html = _tasks_table_html([])
     assert "No tasks found" in html
 
 
 async def test_tasks_html_unknown_status():
-    from lagomorph.dashboard import _tasks_table_html
+    from lapinq.dashboard import _tasks_table_html
 
     tasks = [{"id": "00000000-0000-0000-0000-000000000000", "status": "unknown-status"}]
     html = _tasks_table_html(tasks)
@@ -256,7 +256,7 @@ async def test_tasks_html_unknown_status():
 
 
 async def test_tasks_html_args_str():
-    from lagomorph.dashboard import _tasks_table_html
+    from lapinq.dashboard import _tasks_table_html
 
     tasks = [{
         "id": "00000000-0000-0000-0000-000000000000",
@@ -272,7 +272,7 @@ async def test_tasks_html_args_str():
 
 
 async def test_tasks_html_long_result_truncated():
-    from lagomorph.dashboard import _tasks_table_html
+    from lapinq.dashboard import _tasks_table_html
 
     tasks = [{
         "id": "00000000-0000-0000-0000-000000000000",
@@ -287,8 +287,8 @@ async def test_tasks_html_long_result_truncated():
 
 
 async def test_dashboard_page_filters_present():
-    from lagomorph.dashboard import dashboard_page
-    from lagomorph.storage import Storage
+    from lapinq.dashboard import dashboard_page
+    from lapinq.storage import Storage
 
     storage = await Storage.create(DATABASE_URL)
     try:

@@ -517,7 +517,7 @@ wheels = [
 ]
 
 [[package]]
-name = "lagomorph"
+name = "lapinq"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

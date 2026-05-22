@@ -7,12 +7,12 @@ from typing import Any
 
 import asyncpg
 
-logger = logging.getLogger("lagomorph.storage")
+logger = logging.getLogger("lapinq.storage")
 
 RETRY_BACKOFF_SECONDS = (10, 30, 60, 300, 600)
 
 SQL_SCHEMA = """
-CREATE TABLE IF NOT EXISTS lagomorph_tasks (
+CREATE TABLE IF NOT EXISTS lapinq_tasks (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     queue_name   TEXT NOT NULL,
     task_name    TEXT NOT NULL,
@@ -34,36 +34,36 @@ CREATE TABLE IF NOT EXISTS lagomorph_tasks (
     worker_id    TEXT
 );
 
-ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
-ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
-ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
+ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
+ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
+ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status
-    ON lagomorph_tasks(status, created_at);
+    ON lapinq_tasks(status, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_scheduled
-    ON lagomorph_tasks(scheduled_at)
+    ON lapinq_tasks(scheduled_at)
     WHERE status = 'pending';
 
 CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
-    ON lagomorph_tasks(priority DESC, created_at)
+    ON lapinq_tasks(priority DESC, created_at)
     WHERE status = 'pending';
 """
 
 NOTIFY_SQL = """
-CREATE OR REPLACE FUNCTION notify_lagomorph_change()
+CREATE OR REPLACE FUNCTION notify_lapinq_change()
 RETURNS TRIGGER AS $$
 BEGIN
-    PERFORM pg_notify('lagomorph_changed', '');
+    PERFORM pg_notify('lapinq_changed', '');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS lagomorph_change_trigger ON lagomorph_tasks;
-CREATE TRIGGER lagomorph_change_trigger
-AFTER INSERT OR UPDATE ON lagomorph_tasks
+DROP TRIGGER IF EXISTS lapinq_change_trigger ON lapinq_tasks;
+CREATE TRIGGER lapinq_change_trigger
+AFTER INSERT OR UPDATE ON lapinq_tasks
 FOR EACH STATEMENT
-EXECUTE FUNCTION notify_lagomorph_change();
+EXECUTE FUNCTION notify_lapinq_change();
 """
 
 
@@ -106,14 +106,14 @@ class Storage:
     async def listen_for_changes(self, callback: Any) -> None:
         conn = await self.pool.acquire()
         self._listener_cb = lambda *_: callback()
-        await conn.add_listener("lagomorph_changed", self._listener_cb)
+        await conn.add_listener("lapinq_changed", self._listener_cb)
         self._listener_conn = conn
 
     async def stop_listening(self) -> None:
         if self._listener_conn is not None:
             conn = self._listener_conn
             self._listener_conn = None
-            await conn.remove_listener("lagomorph_changed", self._listener_cb)
+            await conn.remove_listener("lapinq_changed", self._listener_cb)
             await self.pool.release(conn)
 
     async def close(self) -> None:
@@ -137,7 +137,7 @@ class Storage:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO lagomorph_tasks
+                INSERT INTO lapinq_tasks
                     (task_name, queue_name, module_path, args, kwargs, status,
                      scheduled_at, max_retries, priority, ttl_seconds)
                 VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, 'pending',
@@ -164,13 +164,13 @@ class Storage:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                UPDATE lagomorph_tasks
+                UPDATE lapinq_tasks
                 SET status = 'running',
                     started_at = now(),
                     worker_id = $1,
                     last_heartbeat = now()
                 WHERE id = (
-                    SELECT id FROM lagomorph_tasks
+                    SELECT id FROM lapinq_tasks
                     WHERE status = ANY($2::text[])
                     AND scheduled_at <= now()
                     ORDER BY priority DESC, created_at
@@ -188,7 +188,7 @@ class Storage:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                UPDATE lagomorph_tasks
+                UPDATE lapinq_tasks
                 SET status = 'completed',
                     result = $2,
                     completed_at = now()
@@ -201,7 +201,7 @@ class Storage:
     async def fail_task(self, task_id: uuid.UUID, error: str | None = None) -> None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT attempts, max_retries FROM lagomorph_tasks WHERE id = $1", task_id
+                "SELECT attempts, max_retries FROM lapinq_tasks WHERE id = $1", task_id
             )
             if row is None:
                 return
@@ -210,7 +210,7 @@ class Storage:
                 backoff = _retry_backoff_seconds(attempts)
                 await conn.execute(
                     """
-                    UPDATE lagomorph_tasks
+                    UPDATE lapinq_tasks
                     SET status = 'pending',
                         attempts = $2,
                         error = $3,
@@ -227,7 +227,7 @@ class Storage:
             else:
                 await conn.execute(
                     """
-                    UPDATE lagomorph_tasks
+                    UPDATE lapinq_tasks
                     SET status = 'failed',
                         attempts = $2,
                         error = $3,
@@ -242,7 +242,7 @@ class Storage:
     async def heartbeat(self, worker_id: str) -> None:
         async with self.pool.acquire() as conn:
             await conn.execute(
-                "UPDATE lagomorph_tasks SET last_heartbeat = now() WHERE worker_id = $1 AND status = 'running'",
+                "UPDATE lapinq_tasks SET last_heartbeat = now() WHERE worker_id = $1 AND status = 'running'",
                 worker_id,
             )
 
@@ -250,14 +250,14 @@ class Storage:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                UPDATE lagomorph_tasks
+                UPDATE lapinq_tasks
                 SET status = 'pending',
                     started_at = NULL,
                     worker_id = NULL,
                     attempts = attempts + 1,
                     error = 'recovered after timeout'
                 WHERE id = ANY(
-                    SELECT id FROM lagomorph_tasks
+                    SELECT id FROM lapinq_tasks
                     WHERE status = 'running'
                     AND started_at < now() - ($1::text || ' seconds')::interval
                     FOR UPDATE SKIP LOCKED
@@ -270,7 +270,7 @@ class Storage:
 
     async def get_task(self, task_id: uuid.UUID) -> dict[str, Any] | None:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM lagomorph_tasks WHERE id = $1", task_id)
+            row = await conn.fetchrow("SELECT * FROM lapinq_tasks WHERE id = $1", task_id)
             return self._parse_row(row)
 
     async def list_tasks(
@@ -291,7 +291,7 @@ class Storage:
 
             where = " AND ".join(conditions) if conditions else "TRUE"
             query = f"""
-                SELECT * FROM lagomorph_tasks
+                SELECT * FROM lapinq_tasks
                 WHERE {where}
                 ORDER BY created_at DESC
                 LIMIT ${len(params) + 1}
@@ -314,7 +314,7 @@ class Storage:
         async with self.pool.acquire() as conn:
             result = await conn.execute(
                 """
-                UPDATE lagomorph_tasks
+                UPDATE lapinq_tasks
                 SET status = 'pending',
                     attempts = 0,
                     error = NULL,
@@ -338,7 +338,7 @@ class Storage:
                     COUNT(*) FILTER (WHERE status = 'running') AS running,
                     COUNT(*) FILTER (WHERE status = 'completed') AS completed,
                     COUNT(*) FILTER (WHERE status = 'failed') AS failed
-                FROM lagomorph_tasks
+                FROM lapinq_tasks
                 GROUP BY queue_name
                 ORDER BY queue_name
                 """
@@ -349,7 +349,7 @@ class Storage:
         async with self.pool.acquire() as conn:
             result = await conn.execute(
                 """
-                DELETE FROM lagomorph_tasks
+                DELETE FROM lapinq_tasks
                 WHERE id = $1 AND status = 'pending'
                 """,
                 task_id,
@@ -360,7 +360,7 @@ class Storage:
         async with self.pool.acquire() as conn:
             result = await conn.execute(
                 """
-                DELETE FROM lagomorph_tasks
+                DELETE FROM lapinq_tasks
                 WHERE ttl_seconds IS NOT NULL
                   AND ttl_seconds > 0
                   AND created_at + (ttl_seconds::text || ' seconds')::interval < now()

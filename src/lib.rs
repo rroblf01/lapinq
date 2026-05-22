@@ -17,7 +17,7 @@ pub struct Task {
 }
 
 const SCHEMA_SQL: &str = "
-    CREATE TABLE IF NOT EXISTS lagomorph_tasks (
+    CREATE TABLE IF NOT EXISTS lapinq_tasks (
         id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         queue_name   TEXT NOT NULL,
         task_name    TEXT NOT NULL,
@@ -38,16 +38,16 @@ const SCHEMA_SQL: &str = "
         last_heartbeat TIMESTAMPTZ,
         worker_id    TEXT
     );
-    ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
-    ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
-    ALTER TABLE lagomorph_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
     CREATE INDEX IF NOT EXISTS idx_tasks_status
-        ON lagomorph_tasks(status, created_at);
+        ON lapinq_tasks(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_scheduled
-        ON lagomorph_tasks(scheduled_at)
+        ON lapinq_tasks(scheduled_at)
         WHERE status = 'pending';
     CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
-        ON lagomorph_tasks(priority DESC, created_at)
+        ON lapinq_tasks(priority DESC, created_at)
         WHERE status = 'pending';
 ";
 
@@ -78,13 +78,13 @@ pub async fn claim_task(
     let row = client
         .query_opt(
             "
-            UPDATE lagomorph_tasks
+            UPDATE lapinq_tasks
             SET status = 'running',
                 started_at = now(),
                 worker_id = $1,
                 last_heartbeat = now()
             WHERE id = (
-                SELECT id FROM lagomorph_tasks
+                SELECT id FROM lapinq_tasks
                 WHERE status = 'pending'
                 AND scheduled_at <= now()
                 ORDER BY priority DESC, created_at
@@ -121,7 +121,7 @@ pub async fn complete_task_in_db(
 ) -> Result<(), tokio_postgres::Error> {
     client
         .execute(
-            "UPDATE lagomorph_tasks SET status = 'completed', result = $2, completed_at = now() WHERE id = $1",
+            "UPDATE lapinq_tasks SET status = 'completed', result = $2, completed_at = now() WHERE id = $1",
             &[&task_id, &result],
         )
         .await?;
@@ -140,7 +140,7 @@ pub async fn fail_task_in_db(
         let backoff = retry_backoff_seconds(new_attempts);
         client
             .execute(
-                "UPDATE lagomorph_tasks SET status = 'pending', attempts = $2, error = $3, \
+                "UPDATE lapinq_tasks SET status = 'pending', attempts = $2, error = $3, \
                  scheduled_at = now() + ($4::text || ' seconds')::interval, started_at = NULL, worker_id = NULL WHERE id = $1",
                 &[&task_id, &new_attempts, &error, &backoff.to_string()],
             )
@@ -149,7 +149,7 @@ pub async fn fail_task_in_db(
     } else {
         client
             .execute(
-                "UPDATE lagomorph_tasks SET status = 'failed', attempts = $2, error = $3, completed_at = now() WHERE id = $1",
+                "UPDATE lapinq_tasks SET status = 'failed', attempts = $2, error = $3, completed_at = now() WHERE id = $1",
                 &[&task_id, &new_attempts, &error],
             )
             .await

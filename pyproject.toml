@@ -3,9 +3,9 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "lagomorph"
+name = "lapinq"
 version = "0.1.0"
-description = "A lightweight task queue with PostgreSQL backend, replacing Celery + RabbitMQ"
+description = "A lightweight task queue with PostgreSQL backend"
 readme = "README.md"
 authors = [
     { name = "Ricardo Robles", email = "ricardo.r.f@hotmail.com" }
@@ -36,20 +36,20 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ricardorobles/lagomorph"
-Repository = "https://github.com/ricardorobles/lagomorph"
-Documentation = "https://ricardorobles.github.io/lagomorph"
+Homepage = "https://github.com/ricardorobles/lapinq"
+Repository = "https://github.com/ricardorobles/lapinq"
+Documentation = "https://ricardorobles.github.io/lapinq"
 
 [tool.maturin]
 python-source = "python"
-module-name = "lagomorph._worker"
+module-name = "lapinq._worker"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source_pkgs = ["lagomorph"]
+source_pkgs = ["lapinq"]
 branch = true
 
 [tool.ruff]

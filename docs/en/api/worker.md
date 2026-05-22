@@ -29,7 +29,7 @@ Inline worker that runs in the same event loop as the server. Takes an existing 
 ### CLI — Python Worker
 
 ```bash
-python -m lagomorph worker \
+python -m lapinq worker \
   --database-url postgresql://user:pass@localhost:5432/db \
   --concurrency 4 \
   --poll-interval 0.1 \
@@ -39,7 +39,7 @@ python -m lagomorph worker \
 ### CLI — Inline Worker (with server)
 
 ```bash
-python -m lagomorph server --worker --port 8001
+python -m lapinq server --worker --port 8001
 ```
 
 ## Rust Worker
@@ -47,7 +47,7 @@ python -m lagomorph server --worker --port 8001
 ### CLI
 
 ```bash
-lagomorph-worker \
+lapinq-worker \
   --database-url postgresql://user:pass@localhost:5432/db \
   --concurrency 4 \
   --poll-interval 0.1 \
@@ -56,19 +56,19 @@ lagomorph-worker \
 
 | Flag | Env | Default | Description |
 |------|-----|---------|-------------|
-| `--database-url` | `DATABASE_URL` | `postgresql://localhost:5432/lagomorph` | PostgreSQL connection URL |
+| `--database-url` | `DATABASE_URL` | `postgresql://localhost:5432/lapinq` | PostgreSQL connection URL |
 | `--concurrency` | | `4` | Max simultaneous tasks |
 | `--poll-interval` | | `0.1` | Seconds between DB polls |
 | `--task-timeout` | | `300` | Task timeout in seconds |
 
-The Rust worker connects directly to PostgreSQL, claims tasks using `FOR UPDATE SKIP LOCKED`, and executes each task by spawning `python -m lagomorph execute <task_id>` as a subprocess. It handles retries with exponential backoff (10, 30, 60, 300, 600 seconds).
+The Rust worker connects directly to PostgreSQL, claims tasks using `FOR UPDATE SKIP LOCKED`, and executes each task by spawning `python -m lapinq execute <task_id>` as a subprocess. It handles retries with exponential backoff (10, 30, 60, 300, 600 seconds).
 
 ## Rust Executor (Embedded)
 
 The Python worker optionally uses the Rust task executor via PyO3 for synchronous task functions, avoiding subprocess overhead. Imported as:
 
 ```python
-from lagomorph._worker import execute_task_inline
+from lapinq._worker import execute_task_inline
 
 result = execute_task_inline(task_data)
 ```
@@ -88,5 +88,5 @@ Internal function executed as a subprocess for each task. Connects to PostgreSQL
 ### CLI
 
 ```bash
-python -m lagomorph execute <task_id>
+python -m lapinq execute <task_id>
 ```

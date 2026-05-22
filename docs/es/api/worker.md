@@ -29,7 +29,7 @@ Worker inline que se ejecuta en el mismo event loop que el servidor. Toma una in
 ### CLI — Worker Python
 
 ```bash
-python -m lagomorph worker \
+python -m lapinq worker \
   --database-url postgresql://user:pass@localhost:5432/db \
   --concurrency 4 \
   --poll-interval 0.1 \
@@ -39,7 +39,7 @@ python -m lagomorph worker \
 ### CLI — Worker Inline (con servidor)
 
 ```bash
-python -m lagomorph server --worker --port 8001
+python -m lapinq server --worker --port 8001
 ```
 
 ## Worker Rust
@@ -47,7 +47,7 @@ python -m lagomorph server --worker --port 8001
 ### CLI
 
 ```bash
-lagomorph-worker \
+lapinq-worker \
   --database-url postgresql://user:pass@localhost:5432/db \
   --concurrency 4 \
   --poll-interval 0.1 \
@@ -56,19 +56,19 @@ lagomorph-worker \
 
 | Flag | Env | Por defecto | Descripción |
 |------|-----|-------------|-------------|
-| `--database-url` | `DATABASE_URL` | `postgresql://localhost:5432/lagomorph` | URL de conexión PostgreSQL |
+| `--database-url` | `DATABASE_URL` | `postgresql://localhost:5432/lapinq` | URL de conexión PostgreSQL |
 | `--concurrency` | | `4` | Máx. tareas simultáneas |
 | `--poll-interval` | | `0.1` | Segundos entre sondeos a BD |
 | `--task-timeout` | | `300` | Timeout de tarea en segundos |
 
-El worker Rust se conecta directamente a PostgreSQL, reclama tareas usando `FOR UPDATE SKIP LOCKED`, y ejecuta cada tarea lanzando `python -m lagomorph execute <task_id>` como subproceso. Maneja reintentos con backoff exponencial (10, 30, 60, 300, 600 segundos).
+El worker Rust se conecta directamente a PostgreSQL, reclama tareas usando `FOR UPDATE SKIP LOCKED`, y ejecuta cada tarea lanzando `python -m lapinq execute <task_id>` como subproceso. Maneja reintentos con backoff exponencial (10, 30, 60, 300, 600 segundos).
 
 ## Ejecutor Rust (Embebido)
 
 El worker Python usa opcionalmente el ejecutor Rust vía PyO3 para funciones síncronas, evitando la sobrecarga de subprocesos. Se importa como:
 
 ```python
-from lagomorph._worker import execute_task_inline
+from lapinq._worker import execute_task_inline
 
 resultado = execute_task_inline(datos_tarea)
 ```
@@ -88,5 +88,5 @@ Función interna ejecutada como subproceso para cada tarea. Se conecta a Postgre
 ### CLI
 
 ```bash
-python -m lagomorph execute <task_id>
+python -m lapinq execute <task_id>
 ```

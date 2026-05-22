@@ -3,12 +3,12 @@ from __future__ import annotations
 import sys
 from unittest import mock
 
-from lagomorph.__main__ import main
+from lapinq.__main__ import main
 
 
 def test_cli_server_parses_defaults():
-    with mock.patch.object(sys, "argv", ["lagomorph", "server"]), mock.patch(
-        "lagomorph.__main__._run_server"
+    with mock.patch.object(sys, "argv", ["lapinq", "server"]), mock.patch(
+        "lapinq.__main__._run_server"
     ) as mock_run:
         main()
         mock_run.assert_called_once()
@@ -22,8 +22,8 @@ def test_cli_server_parses_defaults():
 def test_cli_server_parses_custom():
     with mock.patch.object(
         sys, "argv",
-        ["lagomorph", "server", "--host", "127.0.0.1", "--port", "9000", "--log-level", "debug"],
-    ), mock.patch("lagomorph.__main__._run_server") as mock_run:
+        ["lapinq", "server", "--host", "127.0.0.1", "--port", "9000", "--log-level", "debug"],
+    ), mock.patch("lapinq.__main__._run_server") as mock_run:
         main()
         args = mock_run.call_args[0][0]
         assert args.host == "127.0.0.1"
@@ -32,8 +32,8 @@ def test_cli_server_parses_custom():
 
 
 def test_cli_execute_parses_task_id():
-    with mock.patch.object(sys, "argv", ["lagomorph", "execute", "abc-123"]), mock.patch(
-        "lagomorph.__main__._run_execute"
+    with mock.patch.object(sys, "argv", ["lapinq", "execute", "abc-123"]), mock.patch(
+        "lapinq.__main__._run_execute"
     ) as mock_run:
         main()
         args = mock_run.call_args[0][0]
@@ -41,8 +41,8 @@ def test_cli_execute_parses_task_id():
 
 
 def test_cli_worker_parses_defaults():
-    with mock.patch.object(sys, "argv", ["lagomorph", "worker"]), mock.patch(
-        "lagomorph.__main__._run_worker"
+    with mock.patch.object(sys, "argv", ["lapinq", "worker"]), mock.patch(
+        "lapinq.__main__._run_worker"
     ) as mock_run:
         main()
         args = mock_run.call_args[0][0]
@@ -54,8 +54,8 @@ def test_cli_worker_parses_defaults():
 def test_cli_worker_parses_custom():
     with mock.patch.object(
         sys, "argv",
-        ["lagomorph", "worker", "--concurrency", "8", "--poll-interval", "0.5", "--task-timeout", "600"],
-    ), mock.patch("lagomorph.__main__._run_worker") as mock_run:
+        ["lapinq", "worker", "--concurrency", "8", "--poll-interval", "0.5", "--task-timeout", "600"],
+    ), mock.patch("lapinq.__main__._run_worker") as mock_run:
         main()
         args = mock_run.call_args[0][0]
         assert args.concurrency == 8
@@ -67,12 +67,12 @@ def test_cli_server_with_worker_flags():
     with mock.patch.object(
         sys, "argv",
         [
-            "lagomorph", "server", "--worker",
+            "lapinq", "server", "--worker",
             "--worker-concurrency", "8",
             "--worker-poll-interval", "0.5",
             "--worker-timeout", "600",
         ],
-    ), mock.patch("lagomorph.__main__._run_server") as mock_run:
+    ), mock.patch("lapinq.__main__._run_server") as mock_run:
         main()
         args = mock_run.call_args[0][0]
         assert args.worker is True
@@ -82,8 +82,8 @@ def test_cli_server_with_worker_flags():
 
 
 def test_cli_server_worker_defaults():
-    with mock.patch.object(sys, "argv", ["lagomorph", "server", "--worker"]), mock.patch(
-        "lagomorph.__main__._run_server"
+    with mock.patch.object(sys, "argv", ["lapinq", "server", "--worker"]), mock.patch(
+        "lapinq.__main__._run_server"
     ) as mock_run:
         main()
         args = mock_run.call_args[0][0]
@@ -94,7 +94,7 @@ def test_cli_server_worker_defaults():
 
 
 def test_cli_requires_command():
-    with mock.patch.object(sys, "argv", ["lagomorph"]):
+    with mock.patch.object(sys, "argv", ["lapinq"]):
         try:
             main()
             raise AssertionError("expected SystemExit")
@@ -103,7 +103,7 @@ def test_cli_requires_command():
 
 
 def test_cli_unknown_command():
-    with mock.patch.object(sys, "argv", ["lagomorph", "unknown"]):
+    with mock.patch.object(sys, "argv", ["lapinq", "unknown"]):
         try:
             main()
             raise AssertionError("expected SystemExit")

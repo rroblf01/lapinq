@@ -11,12 +11,12 @@ from typing import Any
 
 import asyncpg
 
-from lagomorph.storage import json_loads
+from lapinq.storage import json_loads
 
-logger = logging.getLogger("lagomorph.execute")
+logger = logging.getLogger("lapinq.execute")
 
 try:
-    from lagomorph._worker import execute_task_inline as _execute_rust  # ty: ignore
+    from lapinq._worker import execute_task_inline as _execute_rust  # ty: ignore
     logger.info("Rust task executor available")
 except ImportError:
     _execute_rust = None
@@ -54,12 +54,12 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
 
 
 async def execute_task(task_id: str) -> None:
-    database_url = os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
+    database_url = os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lapinq")
     tid = uuid.UUID(task_id)
 
     conn = await asyncpg.connect(database_url)
     try:
-        row = await conn.fetchrow("SELECT * FROM lagomorph_tasks WHERE id = $1", tid)
+        row = await conn.fetchrow("SELECT * FROM lapinq_tasks WHERE id = $1", tid)
         if row is None:
             logger.error("Task %s not found", task_id)
             sys.exit(1)

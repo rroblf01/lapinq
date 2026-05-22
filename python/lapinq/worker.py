@@ -9,9 +9,9 @@ import signal
 import sys
 import uuid
 
-from lagomorph.storage import Storage
+from lapinq.storage import Storage
 
-logger = logging.getLogger("lagomorph.worker")
+logger = logging.getLogger("lapinq.worker")
 
 HEARTBEAT_INTERVAL = 15.0
 
@@ -22,7 +22,7 @@ async def run_worker(
     poll_interval: float = 0.1,
     task_timeout: int = 300,
 ) -> None:
-    database_url = database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
+    database_url = database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lapinq")
     worker_id = str(uuid.uuid4())
     storage = await Storage.create(database_url, max_size=concurrency + 2)
 
@@ -46,7 +46,7 @@ async def run_worker(
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable,
                     "-m",
-                    "lagomorph",
+                    "lapinq",
                     "execute",
                     str(task_id),
                     env={**os.environ, "DATABASE_URL": database_url, "LAGOMORPH_WORKER_ID": worker_id},
@@ -110,7 +110,7 @@ async def run_worker_inline(
     poll_interval: float = 0.1,
     task_timeout: int = 300,
 ) -> None:
-    from lagomorph.execute import execute_task_inline
+    from lapinq.execute import execute_task_inline
 
     worker_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(concurrency)

@@ -4,16 +4,16 @@ import argparse
 import logging
 import os
 
-from lagomorph.log import configure_logging
+from lapinq.log import configure_logging
 
 configure_logging()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="lagomorph")
+    parser = argparse.ArgumentParser(prog="lapinq")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    server_parser = subparsers.add_parser("server", help="Start the lagomorph server")
+    server_parser = subparsers.add_parser("server", help="Start the lapinq server")
     server_parser.add_argument("--host", default="0.0.0.0")
     server_parser.add_argument("--port", type=int, default=8001)
     server_parser.add_argument("--database-url", default=None)
@@ -46,9 +46,9 @@ def main() -> None:
 
 def _run_server(args: argparse.Namespace) -> None:
     logging.getLogger().setLevel(args.log_level.upper())
-    from lagomorph.server import create_app
+    from lapinq.server import create_app
 
-    database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
+    database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lapinq")
     api_key = os.environ.get("LAGOMORPH_API_KEY")
     rate_limit_str = os.environ.get("LAGOMORPH_RATE_LIMIT", "0")
     rate_limit = int(rate_limit_str) if rate_limit_str.isdigit() else 0
@@ -70,16 +70,16 @@ def _run_server(args: argparse.Namespace) -> None:
 def _run_execute(args: argparse.Namespace) -> None:
     import asyncio
 
-    from lagomorph.execute import execute_task
+    from lapinq.execute import execute_task
 
     asyncio.run(execute_task(args.task_id))
 
 
 def _run_worker(args: argparse.Namespace) -> None:
     logging.getLogger().setLevel(logging.INFO)
-    from lagomorph.worker import run_worker
+    from lapinq.worker import run_worker
 
-    database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lagomorph")
+    database_url = args.database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lapinq")
     import asyncio
 
     asyncio.run(

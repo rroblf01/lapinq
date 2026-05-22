@@ -2,26 +2,26 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: lagomorph
-      POSTGRES_PASSWORD: lagomorph
-      POSTGRES_DB: lagomorph
+      POSTGRES_USER: lapinq
+      POSTGRES_PASSWORD: lapinq
+      POSTGRES_DB: lapinq
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lagomorph"]
+      test: ["CMD-SHELL", "pg_isready -U lapinq"]
       interval: 2s
       timeout: 2s
       retries: 10
 
-  lagomorph:
+  lapinq:
     build:
       context: ..
       dockerfile: example/Dockerfile
-    command: python -m lagomorph server --worker --port 8001
+    command: python -m lapinq server --worker --port 8001
     ports:
       - "8001:8001"
     environment:
-      DATABASE_URL: postgresql://lagomorph:lagomorph@postgres:5432/lagomorph
+      DATABASE_URL: postgresql://lapinq:lapinq@postgres:5432/lapinq
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,12 +34,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://lagomorph:lagomorph@postgres:5432/lagomorph
-      LAGOMORPH_SERVER_URL: http://lagomorph:8001
+      DATABASE_URL: postgresql://lapinq:lapinq@postgres:5432/lapinq
+      LAGOMORPH_SERVER_URL: http://lapinq:8001
     volumes:
       - ./app:/workspace/example/app
     depends_on:
       postgres:
         condition: service_healthy
-      lagomorph:
+      lapinq:
         condition: service_started

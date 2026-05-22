@@ -7,7 +7,7 @@ The `TaskQueue` class is the main entry point for defining and enqueuing tasks s
 ### Configuration
 
 ```python
-from lagomorph import TaskQueue
+from lapinq import TaskQueue
 
 tasks = TaskQueue(
     server_url="http://worker:8001",
@@ -19,7 +19,7 @@ tasks = TaskQueue(
 ### AsyncTaskQueue
 
 ```python
-from lagomorph import AsyncTaskQueue
+from lapinq import AsyncTaskQueue
 
 tasks = AsyncTaskQueue(
     server_url="http://worker:8001",
@@ -173,7 +173,7 @@ Features:
 Enable automatic cleanup of expired tasks:
 
 ```bash
-python -m lagomorph server --worker --cleanup-interval 300
+python -m lapinq server --worker --cleanup-interval 300
 ```
 
 This deletes tasks where `created_at + ttl_seconds < now()` every 5 minutes.

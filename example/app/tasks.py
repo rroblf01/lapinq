@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 
-logger = logging.getLogger("lagomorph.example.tasks")
+logger = logging.getLogger("lapinq.example.tasks")
 
 
 def send_email(recipient: str, subject: str, body: str) -> str:
