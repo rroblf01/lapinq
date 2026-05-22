@@ -16,7 +16,7 @@ from lagomorph.storage import json_loads
 logger = logging.getLogger("lagomorph.execute")
 
 try:
-    from lagomorph._worker import execute_task_inline as _execute_rust
+    from lagomorph._worker import execute_task_inline as _execute_rust  # ty: ignore
     logger.info("Rust task executor available")
 except ImportError:
     _execute_rust = None

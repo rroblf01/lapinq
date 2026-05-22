@@ -26,6 +26,7 @@ async def test_execute_success():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("add", "default", "tests.test_execute", args=[2, 3])
+        assert task_id is not None
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "lagomorph", "execute", str(task_id),
             env={**os.environ, "DATABASE_URL": DATABASE_URL},
@@ -43,6 +44,7 @@ async def test_execute_async_function():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("async_echo", "default", "tests.test_execute", args=["hello"])
+        assert task_id is not None
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "lagomorph", "execute", str(task_id),
             env={**os.environ, "DATABASE_URL": DATABASE_URL},
@@ -121,7 +123,7 @@ async def test_execute_inline_function_raises():
 
 
 async def test_rust_executor_available():
-    from lagomorph._worker import execute_task_inline as rust_exec
+    from lagomorph._worker import execute_task_inline as rust_exec  # ty: ignore
 
     task_data = {
         "module_path": "tests.test_execute",
@@ -134,7 +136,7 @@ async def test_rust_executor_available():
 
 
 async def test_rust_executor_rejects_async():
-    from lagomorph._worker import execute_task_inline as rust_exec
+    from lagomorph._worker import execute_task_inline as rust_exec  # ty: ignore
 
     task_data = {
         "module_path": "tests.test_execute",
@@ -196,6 +198,7 @@ async def test_execute_function_raises():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("fail_func", "default", "tests.test_execute")
+        assert task_id is not None
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "lagomorph", "execute", str(task_id),
             env={**os.environ, "DATABASE_URL": DATABASE_URL},

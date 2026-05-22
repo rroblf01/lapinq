@@ -13,6 +13,7 @@ async def test_worker_claims_and_processes_task():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("test_fn", "default", "tests.test_worker")
+        assert task_id is not None
         claimed = await storage.claim_task("test-worker-1")
         assert claimed is not None
         assert claimed["id"] == task_id
@@ -25,6 +26,7 @@ async def test_execute_imports_and_runs_function():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("dummy_task", "default", "tests.test_worker")
+        assert task_id is not None
         await storage.claim_task("test-worker-2")
         await storage.complete_task(task_id, result='"ok"')
         done = await storage.get_task(task_id)
@@ -69,6 +71,7 @@ async def test_heartbeat_loop_updates_on_each_iteration():
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("hb_test", "default", "tests.test_worker")
+        assert task_id is not None
         await storage.claim_task("hb-worker")
 
         shutdown_event = asyncio.Event()
@@ -113,6 +116,7 @@ async def test_process_task_timeout(monkeypatch):
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("slow_func", "test_timeout", "tests.test_worker", max_retries=0)
+        assert task_id is not None
 
         worker_task = asyncio.create_task(
             wmod.run_worker(database_url=DATABASE_URL, concurrency=1, poll_interval=0.05, task_timeout=1)
@@ -154,6 +158,7 @@ async def test_heartbeat_error_does_not_crash_loop(monkeypatch):
         monkeypatch.setattr(smod.Storage, "heartbeat", broken_heartbeat)
 
         task_id = await storage.enqueue("hb_err", "default", "tests.test_worker")
+        assert task_id is not None
         await storage.claim_task("hb-err-worker")
 
         shutdown_event = asyncio.Event()
@@ -177,6 +182,7 @@ async def test_run_worker_inline_processes_task(monkeypatch):
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("add", "test_inline", "tests.test_execute", args=[3, 4])
+        assert task_id is not None
 
         worker_task = asyncio.create_task(
             wmod.run_worker_inline(storage, concurrency=2, poll_interval=0.05, task_timeout=30)
@@ -202,6 +208,7 @@ async def test_run_worker_inline_handles_timeout(monkeypatch):
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("slow_func", "test_inline_timeout", "tests.test_worker", max_retries=0)
+        assert task_id is not None
 
         worker_task = asyncio.create_task(
             wmod.run_worker_inline(storage, concurrency=1, poll_interval=0.05, task_timeout=1)
@@ -229,6 +236,7 @@ async def test_run_worker_loop_processes_task(monkeypatch):
     storage = await Storage.create(DATABASE_URL)
     try:
         task_id = await storage.enqueue("add", "test_worker_loop", "tests.test_execute", args=[1, 2])
+        assert task_id is not None
 
         worker_task = asyncio.create_task(
             wmod.run_worker(database_url=DATABASE_URL, concurrency=2, poll_interval=0.05, task_timeout=30)

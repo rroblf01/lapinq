@@ -56,6 +56,7 @@ async def test_full_flow_claim_and_complete():
             args=[1],
             kwargs={"name": "test"},
         )
+        assert task_id is not None
 
         claimed = await storage.claim_task("worker-42")
         assert claimed is not None
@@ -293,7 +294,7 @@ async def test_dashboard_page_filters_present():
     try:
         await storage.enqueue("test", "test_q", "m1")
         stats = await storage.queue_stats()
-        html = dashboard_page(stats).body.decode()
+        html = bytes(dashboard_page(stats).body).decode()
 
         assert 'id="queue-filter"' in html
         assert 'id="status-filter"' in html

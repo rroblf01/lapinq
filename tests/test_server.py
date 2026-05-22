@@ -624,6 +624,7 @@ async def test_list_tasks_with_status():
                 json={"task_name": "t1", "queue_name": "q1", "module_path": "m1"},
             )
             t2 = await storage.enqueue("t2", "q1", "m1")
+            assert t2 is not None
             await storage.complete_task(t2)
 
             resp = await client.get("/api/tasks?status=pending")
@@ -649,7 +650,9 @@ async def test_list_failed_tasks_with_queue_filter():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             t1 = await storage.enqueue("f1", "qa", "m1", max_retries=0)
+            assert t1 is not None
             t2 = await storage.enqueue("f2", "qb", "m1", max_retries=0)
+            assert t2 is not None
             await storage.claim_task("w1", statuses=("pending",))
             for tid in (t1, t2):
                 await storage.fail_task(tid, error="err")
@@ -709,6 +712,7 @@ async def test_websocket_id_filter_partial():
     app.state.storage = storage
     try:
         tid = await storage.enqueue("id_filter_test", "q1", "tests.test_execute")
+        assert tid is not None
         with TestClient(app) as client, client.websocket_connect("/ws") as ws:
             ws.receive_json()
             prefix = str(tid)[:8]

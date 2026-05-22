@@ -13,9 +13,6 @@ jobs:
         target: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build wheel
         uses: PyO3/maturin-action@v1

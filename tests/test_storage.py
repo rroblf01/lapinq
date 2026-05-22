@@ -47,6 +47,7 @@ async def test_complete_stores_result():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("to_complete", "default", "test_module")
+        assert task_id is not None
         await storage.claim_task("worker-1")
         await storage.complete_task(task_id, result='"ok"')
         task = await storage.get_task(task_id)
@@ -61,6 +62,7 @@ async def test_fail_exhausts_retries():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("to_fail", "default", "test_module", max_retries=0)
+        assert task_id is not None
         await storage.claim_task("worker-1")
         await storage.fail_task(task_id, error="boom")
         task = await storage.get_task(task_id)
@@ -75,6 +77,7 @@ async def test_fail_retries_on_first_attempt():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("to_retry", "default", "test_module", max_retries=3)
+        assert task_id is not None
         await storage.claim_task("worker-1")
         await storage.fail_task(task_id, error="transient")
         task = await storage.get_task(task_id)
@@ -90,6 +93,7 @@ async def test_list_tasks():
     storage = await make_storage()
     try:
         id1 = await storage.enqueue("task1", "q1", "m1")
+        assert id1 is not None
         await storage.enqueue("task2", "q2", "m2")
 
         tasks = await storage.list_tasks()
@@ -122,6 +126,7 @@ async def test_cancel_task():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("to_cancel", "q1", "m1")
+        assert task_id is not None
         cancelled = await storage.cancel_task(task_id)
         assert cancelled is True
         task = await storage.get_task(task_id)
@@ -134,6 +139,7 @@ async def test_cancel_running_task_fails():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("running_task", "q1", "m1")
+        assert task_id is not None
         await storage.claim_task("worker-1")
         cancelled = await storage.cancel_task(task_id)
         assert cancelled is False
@@ -145,6 +151,7 @@ async def test_recover_stale_tasks():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("stale", "q1", "m1")
+        assert task_id is not None
         await storage.claim_task("dead-worker")
         async with storage.pool.acquire() as conn:
             await conn.execute(
@@ -173,6 +180,7 @@ async def test_skipped_locked_task():
     storage = await make_storage()
     try:
         id1 = await storage.enqueue("t1", "q1", "m1")
+        assert id1 is not None
         await storage.enqueue("t2", "q1", "m1")
 
         async with storage.pool.acquire() as conn:
@@ -189,8 +197,11 @@ async def test_list_failed_tasks():
     storage = await make_storage()
     try:
         t1 = await storage.enqueue("f1", "q1", "m1", max_retries=0)
+        assert t1 is not None
         t2 = await storage.enqueue("f2", "q1", "m1", max_retries=0)
+        assert t2 is not None
         t3 = await storage.enqueue("ok", "q1", "m1")
+        assert t3 is not None
         await storage.claim_task("w1")
         await storage.fail_task(t1, error="err1")
         await storage.claim_task("w1")
@@ -208,6 +219,7 @@ async def test_requeue_task():
     storage = await make_storage()
     try:
         t1 = await storage.enqueue("rq1", "q1", "m1", max_retries=0)
+        assert t1 is not None
         await storage.claim_task("w1")
         await storage.fail_task(t1, error="nope")
         ok = await storage.requeue_task(t1)
@@ -235,6 +247,7 @@ async def test_heartbeat():
     storage = await make_storage()
     try:
         t1 = await storage.enqueue("hb1", "q1", "m1")
+        assert t1 is not None
         await storage.claim_task("w1")
         task_before = await storage.get_task(t1)
         assert task_before is not None
@@ -251,7 +264,9 @@ async def test_priority_ordering():
     storage = await make_storage()
     try:
         low = await storage.enqueue("low", "q1", "m1", priority=0)
+        assert low is not None
         high = await storage.enqueue("high", "q1", "m1", priority=10)
+        assert high is not None
         t1 = await storage.claim_task("w1")
         assert t1 is not None
         assert t1["id"] == high
@@ -269,6 +284,7 @@ async def test_scheduled_at_delays_claim():
 
         future = datetime.now(timezone.utc) + timedelta(hours=1)
         task_id = await storage.enqueue("delayed", "q1", "m1", scheduled_at=future)
+        assert task_id is not None
         claimed = await storage.claim_task("w1")
         assert claimed is None
         past = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -284,6 +300,7 @@ async def test_enqueue_with_max_retries():
     storage = await make_storage()
     try:
         task_id = await storage.enqueue("retry5", "q1", "m1", max_retries=5)
+        assert task_id is not None
         task = await storage.get_task(task_id)
         assert task is not None
         assert task["max_retries"] == 5
@@ -319,10 +336,13 @@ async def test_cleanup_expired_tasks():
     try:
         tid1 = await storage.enqueue("exp1", "q1", "m1", ttl_seconds=0)
         tid2 = await storage.enqueue("keep", "q1", "m1")
+        assert tid2 is not None
         tid3 = await storage.enqueue("exp3", "q1", "m1", ttl_seconds=3600)
+        assert tid3 is not None
         assert tid1 is None
 
         tid_exp = await storage.enqueue("exp_soon", "q1", "m1", ttl_seconds=1)
+        assert tid_exp is not None
 
         await asyncio.sleep(1.5)
 
@@ -355,6 +375,7 @@ async def test_list_tasks_with_status_filter():
     try:
         await storage.enqueue("a", "q1", "m1")
         tid2 = await storage.enqueue("b", "q1", "m1")
+        assert tid2 is not None
         await storage.complete_task(tid2)
 
         pending = await storage.list_tasks(status="pending")
@@ -372,6 +393,7 @@ async def test_list_tasks_with_queue_and_status():
     storage = await make_storage()
     try:
         tid = await storage.enqueue("only_q2", "q2", "m1")
+        assert tid is not None
         await storage.enqueue("q1_pending", "q1", "m1")
         await storage.complete_task(tid)
 
