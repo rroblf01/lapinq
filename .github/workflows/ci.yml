@@ -105,25 +105,25 @@ jobs:
 
   test-windows:
     runs-on: windows-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: lapinq_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+      - name: Start PostgreSQL (Docker)
+        shell: pwsh
+        run: |
+          docker run -d --name postgres `
+            -e POSTGRES_USER=postgres `
+            -e POSTGRES_PASSWORD=test `
+            -e POSTGRES_DB=lapinq_test `
+            -p 5432:5432 `
+            postgres:16-alpine
+          # Wait for PostgreSQL to be ready
+          do {
+            Start-Sleep 2
+            $ready = docker exec postgres pg_isready 2>$null
+          } while ($LASTEXITCODE -ne 0)
       - name: Install uv
         run: pip install uv
       - name: Install maturin
@@ -134,28 +134,31 @@ jobs:
         run: uv run pytest tests/ -v -m "not slow"
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
+      - name: Stop PostgreSQL
+        shell: pwsh
+        if: always()
+        run: docker stop postgres
 
   test-macos:
     runs-on: macos-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: lapinq_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+      - name: Install and start PostgreSQL
+        run: |
+          brew install postgresql
+          brew services start postgresql
+          sleep 3
+          for i in $(seq 1 20); do
+            pg_isready && break
+            sleep 1
+          done
+          psql -c "CREATE ROLE postgres LOGIN SUPERUSER PASSWORD 'test';" postgres 2>/dev/null || true
+          psql -c "CREATE DATABASE lapinq_test OWNER postgres;" postgres 2>/dev/null || true
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
       - name: Install uv
         run: pip install uv
       - name: Install maturin
