@@ -13,15 +13,14 @@ jobs:
         target: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Build wheel
-        uses: PyO3/maturin-action@v1
+      - uses: actions/setup-python@v5
         with:
-          command: build
-          target: ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }}
-          args: --release --out dist
-          manylinux: auto
-          token: ${{ secrets.GITHUB_TOKEN }}
+          python-version: "3.14"
+      - name: Build wheel
+        run: |
+          pip install maturin
+          maturin build --release --out dist --manylinux auto \
+            --target ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }}
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
@@ -41,12 +40,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          args: --release --out dist
-          token: ${{ secrets.GITHUB_TOKEN }}
-
+        run: |
+          pip install maturin
+          maturin build --release --out dist
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
@@ -68,18 +64,12 @@ jobs:
       - name: Add x86_64 target
         run: rustup target add x86_64-apple-darwin
       - name: Build arm64 wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          args: --release --out dist
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pip install maturin
+          maturin build --release --out dist
       - name: Build x86_64 wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          args: --release --out dist
-          target: x86_64-apple-darwin
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          maturin build --release --out dist --target x86_64-apple-darwin
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -95,11 +85,9 @@ jobs:
         with:
           python-version: "3.14"
       - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: --out dist
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pip install maturin
+          maturin sdist --out dist
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
@@ -121,8 +109,6 @@ jobs:
           merge-multiple: true
           path: dist
       - name: Publish
-        uses: PyO3/maturin-action@v1
-        with:
-          command: upload
-          args: --non-interactive --skip-existing dist/*
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pip install maturin
+          maturin upload --non-interactive --skip-existing dist/*
