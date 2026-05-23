@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS lapinq_tasks (
 
 ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
 ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
-ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
+ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds DOUBLE PRECISION;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status
     ON lapinq_tasks(status, created_at);
@@ -133,7 +133,7 @@ class Storage:
         scheduled_at: Any = None,
         max_retries: int = 3,
         priority: int = 0,
-        ttl_seconds: int | None = None,
+        ttl_seconds: float | None = None,
     ) -> uuid.UUID | None:
         if ttl_seconds == 0:
             return None

@@ -185,7 +185,7 @@ async def enqueue(request: Request) -> JSONResponse:
     ttl_seconds = body.get("ttl_seconds")
     if ttl_seconds is not None:
         try:
-            ttl_seconds = int(ttl_seconds)
+            ttl_seconds = float(ttl_seconds)
         except (ValueError, TypeError):
             return JSONResponse({"error": "invalid ttl_seconds"}, status_code=400)
 
@@ -431,7 +431,7 @@ async def metrics(request: Request) -> Response:
     return Response("\n".join(lines), media_type="text/plain; version=0.0.4")
 
 
-def _format_ttl(created_at: datetime | None, ttl_seconds: int | None) -> str:
+def _format_ttl(created_at: datetime | None, ttl_seconds: float | None) -> str:
     if ttl_seconds is None:
         return "∞"
     if created_at is None:

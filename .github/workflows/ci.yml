@@ -110,20 +110,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Start PostgreSQL (Docker)
+      - name: Install PostgreSQL (chocolatey)
         shell: pwsh
         run: |
-          docker run -d --name postgres `
-            -e POSTGRES_USER=postgres `
-            -e POSTGRES_PASSWORD=test `
-            -e POSTGRES_DB=lapinq_test `
-            -p 5432:5432 `
-            postgres:16-alpine
-          # Wait for PostgreSQL to be ready
-          do {
-            Start-Sleep 2
-            $ready = docker exec postgres pg_isready 2>$null
-          } while ($LASTEXITCODE -ne 0)
+          choco install postgresql --params "'/Password:test'" --force --no-progress
+          $pgDir = Get-ChildItem "C:\Program Files\PostgreSQL" -Directory `
+            | Sort-Object Name -Descending | Select-Object -First 1
+          $pgBin = Join-Path $pgDir.FullName "bin"
+          echo "$pgBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Start-Service -Name "postgresql*" -ErrorAction SilentlyContinue
+          Start-Sleep 5
+          & "$pgBin\psql" -U postgres -c "CREATE DATABASE lapinq_test;"
       - name: Install uv
         run: pip install uv
       - name: Install maturin
@@ -134,10 +131,6 @@ jobs:
         run: uv run pytest tests/ -v -m "not slow"
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
-      - name: Stop PostgreSQL
-        shell: pwsh
-        if: always()
-        run: docker stop postgres
 
   test-macos:
     runs-on: macos-latest

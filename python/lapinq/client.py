@@ -14,7 +14,7 @@ def _build_payload(
     scheduled_at: str | None,
     max_retries: int | None,
     priority: int,
-    ttl_seconds: int | None,
+    ttl_seconds: float | None,
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> dict[str, Any]:
@@ -62,7 +62,7 @@ class TaskQueue:
         scheduled_at: str | None = None,
         max_retries: int | None = None,
         priority: int = 0,
-        ttl_seconds: int | None = None,
+        ttl_seconds: float | None = None,
     ) -> Any:
         if callable(name):
             return self._register(name, None, self.queue_name, None, None, 0, None)
@@ -80,7 +80,7 @@ class TaskQueue:
         scheduled_at: str | None,
         max_retries: int | None,
         priority: int,
-        ttl_seconds: int | None,
+        ttl_seconds: float | None,
     ) -> Any:
         task_name = name if name is not None else func.__name__
         qualified_name, module_path = _resolve_module(func)
@@ -124,7 +124,7 @@ class AsyncTaskQueue:
         scheduled_at: str | None = None,
         max_retries: int | None = None,
         priority: int = 0,
-        ttl_seconds: int | None = None,
+        ttl_seconds: float | None = None,
     ) -> Any:
         if callable(name):
             return self._register(name, None, self.queue_name, None, None, 0, None)
@@ -142,7 +142,7 @@ class AsyncTaskQueue:
         scheduled_at: str | None,
         max_retries: int | None,
         priority: int,
-        ttl_seconds: int | None,
+        ttl_seconds: float | None,
     ) -> Any:
         task_name = name if name is not None else func.__name__
         qualified_name, module_path = _resolve_module(func)

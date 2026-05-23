@@ -20,7 +20,7 @@ async def run_worker(
     database_url: str | None = None,
     concurrency: int = 4,
     poll_interval: float = 0.1,
-    task_timeout: int = 300,
+    task_timeout: float = 300,
 ) -> None:
     database_url = database_url or os.environ.get("DATABASE_URL", "postgresql://localhost:5432/lapinq")
     worker_id = str(uuid.uuid4())
@@ -108,7 +108,7 @@ async def run_worker_inline(
     storage: Storage,
     concurrency: int = 4,
     poll_interval: float = 0.1,
-    task_timeout: int = 300,
+    task_timeout: float = 300,
 ) -> None:
     from lapinq.execute import execute_task_inline
 

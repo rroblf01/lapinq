@@ -343,10 +343,10 @@ async def test_cleanup_expired_tasks():
         assert tid3 is not None
         assert tid1 is None
 
-        tid_exp = await storage.enqueue("exp_soon", "q1", "m1", ttl_seconds=1)
+        tid_exp = await storage.enqueue("exp_soon", "q1", "m1", ttl_seconds=0.3)
         assert tid_exp is not None
 
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.4)
 
         count = await storage.cleanup_expired_tasks()
         assert count >= 1

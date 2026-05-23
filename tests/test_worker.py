@@ -8,6 +8,8 @@ import signal
 import pytest
 from lapinq.storage import Storage
 
+from tests.helpers import poll_until
+
 DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
 
 
@@ -113,9 +115,8 @@ async def test_heartbeat_loop_does_not_error_for_unknown_worker(monkeypatch):
         await storage.close()
 
 
-def slow_func() -> None:
-    import time
-    time.sleep(999)
+async def _sleep_forever() -> None:
+    await asyncio.sleep(999)
 
 
 @pytest.mark.slow
@@ -124,23 +125,23 @@ async def test_process_task_timeout(monkeypatch):
     import lapinq.worker as wmod
     storage = await Storage.create(DATABASE_URL)
     try:
-        task_id = await storage.enqueue("slow_func", "test_timeout", "tests.test_worker", max_retries=0)
+        task_id = await storage.enqueue("_sleep_forever", "test_timeout", "tests.test_worker", max_retries=0)
         assert task_id is not None
 
         worker_task = asyncio.create_task(
-            wmod.run_worker(database_url=DATABASE_URL, concurrency=1, poll_interval=0.05, task_timeout=1)
+            wmod.run_worker(database_url=DATABASE_URL, concurrency=1, poll_interval=0.05, task_timeout=0.3)
         )
 
-        await asyncio.sleep(1.5)
+        async def get_failed():
+            t = await storage.get_task(task_id)
+            return t if t and t["status"] == "failed" else None
+        task = await poll_until(get_failed, timeout=3)
+        assert task is not None
+        assert task["error"] == "timed out"
 
         worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await worker_task
-
-        task = await storage.get_task(task_id)
-        assert task is not None
-        assert task["status"] == "failed"
-        assert task["error"] == "timed out"
     finally:
         await storage.close()
 
@@ -197,16 +198,16 @@ async def test_run_worker_inline_processes_task(monkeypatch):
             wmod.run_worker_inline(storage, concurrency=2, poll_interval=0.05, task_timeout=30)
         )
 
-        await asyncio.sleep(0.5)
+        async def get_completed():
+            t = await storage.get_task(task_id)
+            return t if t and t["status"] == "completed" else None
+        task = await poll_until(get_completed, timeout=3)
+        assert task is not None
+        assert task["result"] == "7"
 
         worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await worker_task
-
-        task = await storage.get_task(task_id)
-        assert task is not None
-        assert task["status"] == "completed"
-        assert task["result"] == "7"
     finally:
         await storage.close()
 
@@ -217,23 +218,23 @@ async def test_run_worker_inline_handles_timeout(monkeypatch):
 
     storage = await Storage.create(DATABASE_URL)
     try:
-        task_id = await storage.enqueue("slow_func", "test_inline_timeout", "tests.test_worker", max_retries=0)
+        task_id = await storage.enqueue("_sleep_forever", "test_inline_timeout", "tests.test_worker", max_retries=0)
         assert task_id is not None
 
         worker_task = asyncio.create_task(
-            wmod.run_worker_inline(storage, concurrency=1, poll_interval=0.05, task_timeout=1)
+            wmod.run_worker_inline(storage, concurrency=1, poll_interval=0.05, task_timeout=0.3)
         )
 
-        await asyncio.sleep(1.5)
+        async def get_failed():
+            t = await storage.get_task(task_id)
+            return t if t and t["status"] == "failed" else None
+        task = await poll_until(get_failed, timeout=3)
+        assert task is not None
+        assert task["error"] == "timed out"
 
         worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await worker_task
-
-        task = await storage.get_task(task_id)
-        assert task is not None
-        assert task["status"] == "failed"
-        assert task["error"] == "timed out"
     finally:
         await storage.close()
 
@@ -253,15 +254,15 @@ async def test_run_worker_loop_processes_task(monkeypatch):
             wmod.run_worker(database_url=DATABASE_URL, concurrency=2, poll_interval=0.05, task_timeout=30)
         )
 
-        await asyncio.sleep(0.5)
+        async def get_completed():
+            t = await storage.get_task(task_id)
+            return t if t and t["status"] == "completed" else None
+        task = await poll_until(get_completed, timeout=3)
+        assert task is not None
 
         worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await worker_task
-
-        task = await storage.get_task(task_id)
-        assert task is not None
-        assert task["status"] == "completed"
     finally:
         await storage.close()
 
@@ -287,14 +288,15 @@ async def test_rust_worker_binary_processes_task():
             env={**os.environ, "DATABASE_URL": DATABASE_URL},
         )
 
-        await asyncio.sleep(1.5)
-
-        proc.kill()
-        await proc.wait()
-
-        task = await storage.get_task(task_id)
+        async def get_completed():
+            t = await storage.get_task(task_id)
+            return t if t and t["status"] == "completed" else None
+        task = await poll_until(get_completed, timeout=5)
         assert task is not None
         assert task["status"] == "completed", f"Task status: {task['status']}, error: {task.get('error')}"
         assert task["result"] == "30"
+
+        proc.kill()
+        await proc.wait()
     finally:
         await storage.close()

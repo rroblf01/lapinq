@@ -43,7 +43,10 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
         try:
             import json
 
-            return json.loads(_execute_rust(task_data))
+            _rust_fn = _execute_rust
+            loop = asyncio.get_running_loop()
+            raw = await loop.run_in_executor(None, lambda: _rust_fn(task_data))
+            return json.loads(raw)
         except TypeError:
             pass
         except Exception:
