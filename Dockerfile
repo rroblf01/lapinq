@@ -1,33 +1,30 @@
-# Stage 1: Build Rust worker
+# Stage 1: Build Rust worker and Python wheel
 FROM rust:1.95-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
+    python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
+COPY pyproject.toml README.md ./
+COPY python/ python/
 RUN cargo build --release
+RUN pip3 install maturin && maturin build --release --out /build/dist
 
 # Stage 2: Python runtime
 FROM python:3.14-slim-bookworm
 
 WORKDIR /app
 
-# Install system deps for asyncpg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Rust binary
 COPY --from=builder /build/target/release/lapinq-worker /usr/local/bin/lapinq-worker
-
-# Install Python package
-COPY pyproject.toml Cargo.toml README.md ./
-COPY python/ python/
-COPY src/ src/
-RUN pip install --no-cache-dir maturin && maturin develop --release
+COPY --from=builder /build/dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
 
 EXPOSE 8001
 

@@ -107,10 +107,11 @@ pub async fn ensure_schema(pool: &Pool) {
         .expect("Failed to insert initial schema version");
 
     let current_version: i32 = client
-        .query_one("SELECT version FROM lapinq_schema_version", &[])
+        .query_opt("SELECT version FROM lapinq_schema_version", &[])
         .await
         .expect("Failed to read schema version")
-        .get(0);
+        .map(|r| r.get(0))
+        .unwrap_or(0);
 
     for (i, migration) in MIGRATIONS.iter().enumerate() {
         let version = (i + 1) as i32;
