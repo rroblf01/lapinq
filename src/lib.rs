@@ -98,20 +98,24 @@ pub async fn ensure_schema(pool: &Pool) {
         .await
         .expect("Failed to create schema_version table");
 
-    client
-        .execute(
-            "INSERT INTO lapinq_schema_version (version) VALUES (0) ON CONFLICT DO NOTHING",
+    let current_version: i32 = client
+        .query_one(
+            "SELECT COALESCE(MAX(version), 0) FROM lapinq_schema_version",
             &[],
         )
         .await
-        .expect("Failed to insert initial schema version");
-
-    let current_version: i32 = client
-        .query_opt("SELECT version FROM lapinq_schema_version", &[])
-        .await
         .expect("Failed to read schema version")
-        .map(|r| r.get(0))
-        .unwrap_or(0);
+        .get(0);
+
+    if current_version == 0 {
+        client
+            .execute(
+                "INSERT INTO lapinq_schema_version (version) VALUES (0) ON CONFLICT DO NOTHING",
+                &[],
+            )
+            .await
+            .expect("Failed to insert initial schema version");
+    }
 
     for (i, migration) in MIGRATIONS.iter().enumerate() {
         let version = (i + 1) as i32;

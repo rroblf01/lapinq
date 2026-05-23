@@ -496,10 +496,13 @@ async def _apply_migrations(conn: asyncpg.Connection) -> None:
     await conn.execute(
         "CREATE TABLE IF NOT EXISTS lapinq_schema_version (version INT PRIMARY KEY)"
     )
-    await conn.execute(
-        "INSERT INTO lapinq_schema_version (version) VALUES (0) ON CONFLICT DO NOTHING"
+    current = await conn.fetchval(
+        "SELECT COALESCE(MAX(version), 0) FROM lapinq_schema_version"
     )
-    current = await conn.fetchval("SELECT version FROM lapinq_schema_version")
+    if current == 0:
+        await conn.execute(
+            "INSERT INTO lapinq_schema_version (version) VALUES (0) ON CONFLICT DO NOTHING"
+        )
     for i, migration_sql in enumerate(MIGRATIONS):
         version = i + 1
         if version > current:
