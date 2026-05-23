@@ -32,6 +32,7 @@ jobs:
           CIBW_BUILD: "cp310-*"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=10.12"
+          CIBW_ENVIRONMENT_LINUX: "PATH=/root/.cargo/bin:$PATH"
           CIBW_BEFORE_ALL_LINUX: |
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         with:
