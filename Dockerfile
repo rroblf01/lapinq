@@ -2,8 +2,10 @@
 FROM rust:1.95-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip \
+    python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /venv
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
@@ -11,7 +13,7 @@ COPY src/ src/
 COPY pyproject.toml README.md ./
 COPY python/ python/
 RUN cargo build --release
-RUN pip3 install maturin && maturin build --release --out /build/dist
+RUN /venv/bin/pip install maturin && /venv/bin/maturin build --release --out /build/dist
 
 # Stage 2: Python runtime
 FROM python:3.14-slim-bookworm
