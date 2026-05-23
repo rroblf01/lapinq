@@ -5,123 +5,75 @@ on:
     tags: ["v*"]
 
 jobs:
-  build-linux:
-    name: Linux ${{ matrix.target }} (manylinux)
-    runs-on: ubuntu-latest
+  wheels:
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.ref }}
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - name: Build wheel
-        run: |
-          pip install "maturin[zig]"
-          maturin build --release --out dist --compatibility manylinux_2_28 \
-            --target ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }} \
-            --zig
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel-linux-${{ matrix.target }}
-          path: dist
 
-  build-windows:
-    name: Windows cp${{ matrix.python-version }}
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.ref }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Build wheel
-        run: |
-          pip install maturin
-          maturin build --release --out dist
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel-win-cp${{ matrix.python-version }}
-          path: dist
+      - uses: dtolnay/rust-toolchain@stable
 
-  build-macos:
-    name: macOS cp${{ matrix.python-version }}
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.ref }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Add x86_64 target
+      - name: Add x86_64 target for macOS cross-compilation
+        if: matrix.os == 'macos-latest'
         run: rustup target add x86_64-apple-darwin
-      - name: Build arm64 wheel
-        run: |
-          pip install maturin
-          maturin build --release --out dist
-      - name: Build x86_64 wheel
-        run: |
-          maturin build --release --out dist --target x86_64-apple-darwin
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel-macos-cp${{ matrix.python-version }}
-          path: dist
 
-  build-sdist:
-    name: Source distribution
+      - uses: pypa/cibuildwheel@v3.4
+        env:
+          CIBW_BUILD: "cp310-*"
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_BEFORE_ALL_LINUX: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        with:
+          output-dir: dist/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+  sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.ref }}
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - name: Build sdist
-        run: |
-          pip install maturin
-          maturin sdist --out dist
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: pip install build && python -m build --sdist
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: wheel-sdist
-          path: dist
+          name: wheels-sdist
+          path: dist/*.tar.gz
 
   publish:
-    name: Publish to PyPI
-    needs: [build-linux, build-windows, build-macos, build-sdist]
+    needs: [wheels, sdist]
     runs-on: ubuntu-latest
-    environment: release
+    environment:
+      name: pypi
+      url: https://pypi.org/p/lapinq
     permissions:
       id-token: write
-      contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
-          pattern: wheel-*
+          pattern: wheels-*
           merge-multiple: true
-          path: dist
-      - name: Publish
-        run: |
-          pip install maturin
-          maturin upload --non-interactive --skip-existing dist/*
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
