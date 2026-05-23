@@ -1,8 +1,8 @@
-site_name: Lagomorph
+site_name: Lapinq
 site_description: A lightweight task queue with PostgreSQL backend
-site_url: https://rroblf01.github.io/lapinq
-repo_url: https://github.com/rroblf01/lapinq
-repo_name: rroblf01/lapinq
+site_url: https://ricardorobles.github.io/lapinq
+repo_url: https://github.com/ricardorobles/lapinq
+repo_name: ricardorobles/lapinq
 
 theme:
   name: material
@@ -31,6 +31,7 @@ nav:
   - Home: en/index.md
   - Getting Started: en/getting-started.md
   - Usage: en/usage.md
+  - Examples: en/examples.md
   - Deployment: en/deployment.md
   - API Reference:
     - Client: en/api/client.md

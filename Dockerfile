@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Rust binary
-COPY --from=builder /build/target/release/lagomorph-worker /usr/local/bin/lagomorph-worker
+COPY --from=builder /build/target/release/lapinq-worker /usr/local/bin/lapinq-worker
 
 # Install Python package
 COPY pyproject.toml Cargo.toml README.md ./
@@ -27,4 +27,4 @@ RUN pip install --no-cache-dir maturin && maturin develop --release
 
 EXPOSE 8001
 
-CMD ["python", "-m", "lagomorph", "server", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["python", "-m", "lapinq", "server", "--host", "0.0.0.0", "--port", "8001"]

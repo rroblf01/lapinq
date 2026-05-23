@@ -9,8 +9,11 @@ use uuid::Uuid;
 
 use _worker::{
     claim_task, complete_task_in_db, connect_db, ensure_schema, fail_task_in_db,
-    heartbeat_worker, Task,
+    heartbeat_worker, recover_stale_tasks, Task,
 };
+
+#[cfg(feature = "tls")]
+use _worker::connect_db_tls;
 
 fn install_signal_handlers() -> tokio::sync::oneshot::Receiver<()> {
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -47,6 +50,15 @@ struct Args {
 
     #[arg(long, default_value = "300")]
     task_timeout_secs: u64,
+
+    #[arg(long, default_value = "15")]
+    heartbeat_interval_secs: u64,
+
+    #[arg(long, default_value = "300")]
+    stale_task_timeout_secs: i32,
+
+    #[arg(long)]
+    tls: bool,
 }
 
 #[tokio::main]
@@ -56,33 +68,89 @@ async fn main() {
     let worker_id = Uuid::new_v4().to_string();
 
     info!(
-        "Worker {} starting (concurrency={}, poll_interval={}s, timeout={}s)",
-        worker_id, args.concurrency, args.poll_interval_secs, args.task_timeout_secs,
+        "Worker {} starting (concurrency={}, poll_interval={}s, timeout={}s, tls={})",
+        worker_id,
+        args.concurrency,
+        args.poll_interval_secs,
+        args.task_timeout_secs,
+        args.tls,
     );
 
-    let pool = connect_db(&args.database_url).await;
+    let pool = if args.tls {
+        #[cfg(feature = "tls")]
+        {
+            connect_db_tls(&args.database_url).await
+        }
+        #[cfg(not(feature = "tls"))]
+        {
+            panic!("TLS support not enabled. Build with --features tls");
+        }
+    } else {
+        connect_db(&args.database_url).await
+    };
     ensure_schema(&pool).await;
 
     let semaphore = Arc::new(Semaphore::new(args.concurrency));
     let shutdown_rx = install_signal_handlers();
-    tokio::pin!(shutdown_rx);
+    let shutdown_signal = Arc::new(tokio::sync::watch::Sender::new(false));
 
     let hb_pool = pool.clone();
     let hb_worker_id = worker_id.clone();
-    tokio::spawn(async move {
-        let mut hb_interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
+    let mut hb_shutdown = shutdown_signal.subscribe();
+    let heartbeat_handle = tokio::spawn(async move {
+        let mut hb_interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(args.heartbeat_interval_secs));
         loop {
-            hb_interval.tick().await;
-            if let Err(e) = heartbeat_worker(&hb_pool, &hb_worker_id).await {
-                error!("Heartbeat error: {}", e);
+            tokio::select! {
+                _ = hb_interval.tick() => {
+                    if let Err(e) = heartbeat_worker(&hb_pool, &hb_worker_id).await {
+                        error!("Heartbeat error: {}", e);
+                    }
+                }
+                _ = hb_shutdown.changed() => {
+                    if *hb_shutdown.borrow() {
+                        info!("Heartbeat loop shutting down");
+                        break;
+                    }
+                }
             }
         }
     });
+
+    let stale_pool = pool.clone();
+    let mut stale_shutdown = shutdown_signal.subscribe();
+    let stale_interval_secs = args.stale_task_timeout_secs.max(60);
+    let stale_handle = tokio::spawn(async move {
+        let mut interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(stale_interval_secs as u64));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    match recover_stale_tasks(&stale_pool, args.stale_task_timeout_secs).await {
+                        Ok(recovered) => {
+                            if !recovered.is_empty() {
+                                info!("Recovered {} stale tasks", recovered.len());
+                            }
+                        }
+                        Err(e) => error!("Stale task recovery error: {}", e),
+                    }
+                }
+                _ = stale_shutdown.changed() => {
+                    if *stale_shutdown.borrow() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    tokio::pin!(shutdown_rx);
 
     loop {
         tokio::select! {
             _ = &mut shutdown_rx => {
                 info!("Worker {} shutting down, draining active tasks...", worker_id);
+                let _ = shutdown_signal.send(true);
                 break;
             }
             result = claim_task(&pool, &worker_id) => {
@@ -117,6 +185,8 @@ async fn main() {
         }
     }
 
+    let _ = heartbeat_handle.await;
+    let _ = stale_handle.await;
     info!("Worker {} stopped", worker_id);
 }
 
@@ -162,13 +232,18 @@ async fn execute_task(
 }
 
 fn python_interpreter() -> String {
-    std::env::var("LAGOMORPH_PYTHON").unwrap_or_else(|_| "python".to_string())
+    std::env::var("LAPINQ_PYTHON")
+        .ok()
+        .or_else(|| std::env::var("LAGOMORPH_PYTHON").ok())
+        .unwrap_or_else(|| "python".to_string())
 }
 
 async fn run_python_subprocess(task: &Task) -> Result<(String, String), (String, i32, i32)> {
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_default();
+
     let child = Command::new(python_interpreter())
         .args(["-m", "lapinq", "execute", &task.id.to_string()])
-        .env("DATABASE_URL", std::env::var("DATABASE_URL").unwrap_or_default())
+        .env("DATABASE_URL", &database_url)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

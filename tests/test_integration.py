@@ -22,7 +22,7 @@ async def test_full_flow_enqueue_and_server_storage():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={
                     "task_name": "process_video",
                     "queue_name": "video",
@@ -135,7 +135,7 @@ async def test_payload_too_large():
         ):
             big_args = ["x" * 1024 * 200]
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={
                     "task_name": "big",
                     "queue_name": "test",
@@ -159,7 +159,7 @@ async def test_missing_module_path():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "no_module"},
             )
             assert resp.status_code == 400
@@ -178,10 +178,10 @@ async def test_queues_html_with_data():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "t1", "queue_name": "test_q", "module_path": "m1"},
             )
-            resp = await client.get("/api/queues/html")
+            resp = await client.get("/api/v1/queues/html")
             assert resp.status_code == 200
             assert "test_q" in resp.text
             assert "pending" in resp.text
@@ -199,7 +199,7 @@ async def test_tasks_html_with_data():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "my_task", "queue_name": "test_q", "module_path": "m1"},
             )
             resp = await client.get("/api/tasks/html?limit=20")
@@ -220,11 +220,11 @@ async def test_dashboard_html_endpoint():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.get("/api/queues/html")
+            resp = await client.get("/api/v1/queues/html")
             assert resp.status_code == 200
             assert "text/html" in resp.headers["content-type"]
 
-            resp2 = await client.get("/api/tasks/html")
+            resp2 = await client.get("/api/v1/tasks/html")
             assert resp2.status_code == 200
             assert "text/html" in resp2.headers["content-type"]
     finally:

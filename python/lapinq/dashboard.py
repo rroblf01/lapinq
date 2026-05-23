@@ -52,6 +52,7 @@ body {
 .card-stats .c-running { color: #2563eb; }
 .card-stats .c-done    { color: #16a34a; }
 .card-stats .c-failed  { color: #dc2626; }
+.card-stats .c-cancelled { color: #6b7280; }
 .card-stats span { white-space: nowrap; }
 .card-stats .num { font-weight: 600; }
 
@@ -66,7 +67,10 @@ body {
     border-bottom: 1px solid #e5e7eb;
     font-size: 1rem;
     font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
 }
+.load-more { font-size: 0.8125rem; color: #6366f1; cursor: pointer; }
+.load-more:hover { text-decoration: underline; }
 table { width: 100%; border-collapse: collapse; }
 th {
     text-align: left;
@@ -90,6 +94,21 @@ td.name { color: #1f2937; font-weight: 500; }
 td.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; color: #6b7280; }
 td.trunc { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.err { color: #dc2626; }
+td.actions { white-space: nowrap; }
+.btn-action {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    border-radius: 0.25rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #4b5563;
+    cursor: pointer;
+    margin-right: 0.25rem;
+}
+.btn-action:hover { background: #f3f4f6; }
+.btn-action.danger { color: #dc2626; border-color: #dc2626; }
+.btn-action.danger:hover { background: #fef2f2; }
 
 .badge {
     display: inline-block;
@@ -103,6 +122,7 @@ td.err { color: #dc2626; }
 .badge-running   { color: #2563eb; background: #eef2ff; }
 .badge-completed { color: #16a34a; background: #ecfdf5; }
 .badge-failed    { color: #dc2626; background: #fef2f2; }
+.badge-cancelled { color: #6b7280; background: #f3f4f6; }
 
 .empty { padding: 1.5rem; text-align: center; color: #9ca3af; }
 .connecting { padding: 1.5rem; text-align: center; color: #9ca3af; }
@@ -138,14 +158,14 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lagomorph Dashboard</title>
+<title>Lapinq Dashboard</title>
 <style>{CSS}</style>
 </head>
 <body>
 <div class="container">
   <div class="header">
     <div>
-      <h1>Lagomorph <small>Dashboard</small></h1>
+      <h1>Lapinq <small>Dashboard</small></h1>
     </div>
     <div class="filters">
       <span class="filter-group"><label for="queue-filter">Queue:</label>
@@ -157,6 +177,7 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
         <option value="running">Running</option>
         <option value="completed">Completed</option>
         <option value="failed">Failed</option>
+        <option value="cancelled">Cancelled</option>
       </select></span>
       <span class="filter-group"><label for="id-filter">ID:</label>
       <input id="id-filter" type="text" placeholder="Task ID..." oninput="setFilter('id',this.value)"></span>
@@ -176,7 +197,10 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
   </div>
 
   <div class="table-wrap">
-    <div class="table-header">Recent Tasks</div>
+    <div class="table-header">
+      <span>Recent Tasks</span>
+      <span class="load-more" id="load-more" style="display:none" onclick="loadMore()">Show more &darr;</span>
+    </div>
     <div id="tasks-table">
       <div class="connecting">Connecting...</div>
     </div>
@@ -185,14 +209,19 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
 
 <script>
 let ws;
+let taskOffset = 20;
 function connect() {{
-    ws = new WebSocket("ws://" + location.host + "/ws");
+    var protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(protocol + location.host + "/ws");
     ws.onmessage = function(e) {{
         var data = JSON.parse(e.data);
         if (data.cards) document.getElementById("queue-cards").innerHTML = data.cards;
         if (data.table) document.getElementById("tasks-table").innerHTML = data.table;
         if (data.cleanup_interval) document.getElementById("cleanup-info").innerHTML =
             "Cleanup every " + data.cleanup_interval + "s";
+        taskOffset = 20;
+        var lm = document.getElementById("load-more");
+        if (lm) lm.style.display = data.has_more ? "inline" : "none";
     }};
     ws.onclose = function() {{ setTimeout(connect, 1000); }};
 }}
@@ -202,6 +231,74 @@ function setFilter(type, value) {{
         msg[type] = value.trim();
         ws.send(JSON.stringify(msg));
     }}
+}}
+function confirmAction(taskId, action) {{
+    if (!confirm("Are you sure you want to " + action + " task " + taskId.substr(0,8) + "...?")) return;
+    var method = action === "cancel" ? "DELETE" : "POST";
+    var url = "/api/v1/tasks/" + taskId + (action === "requeue" ? "/requeue" : "");
+    fetch(url, {{ method: method }})
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+            if (data.error) alert("Error: " + data.error);
+        }})
+        .catch(function(err) {{ alert("Request failed: " + err); }});
+}}
+function loadMore() {{
+    var limit = taskOffset + 20;
+    taskOffset = limit;
+    fetch("/api/v1/tasks?limit=" + limit)
+        .then(function(r) {{ return r.json(); }})
+        .then(function(tasks) {{
+            var table = document.getElementById("tasks-table");
+            if (tasks.length === 0) {{
+                table.innerHTML = '<div class="empty">No more tasks</div>';
+                return;
+            }}
+            var html = '<table><thead><tr><th>ID</th><th>Task</th><th>Queue</th>'
+                + '<th>Args</th><th>Result</th><th>Error</th><th>Status</th><th>TTL</th>'
+                + '<th>Actions</th></tr></thead><tbody>';
+            for (var i = 0; i < tasks.length; i++) {{
+                var t = tasks[i];
+                var tid = (t.id || "").substr(0,8);
+                var status = t.status || "unknown";
+                var validStates = ["pending","running","completed","failed","cancelled"];
+                var badge = "badge-" + (validStates.indexOf(status) >= 0 ? status : "pending");
+                var argsStr = t.args ? t.args.join(", ") : "";
+                if (t.kwargs) {{
+                    for (var k in t.kwargs) {{
+                        argsStr += (argsStr ? ", " : "") + k + "=" + t.kwargs[k];
+                    }}
+                }}
+                var resultVal = t.result || "";
+                var errorVal = t.error || "";
+                var ttl = t.ttl_remaining || "";
+                html += '<tr><td class="mono">' + tid + '...</td>';
+                html += '<td class="name">' + (t.task_name || "") + '</td>';
+                html += '<td>' + (t.queue_name || "") + '</td>';
+                function esc(s) {{ return s.replace(/\x22/g,'&quot;'); }}
+                html += '<td class="trunc" title="' + esc(argsStr) + '">' + argsStr.substr(0,60) + '</td>';
+                html += '<td class="trunc" title="' + esc(resultVal) + '">' + resultVal.substr(0,60) + '</td>';
+                html += '<td class="trunc err" title="' + esc(errorVal) + '">' + errorVal.substr(0,60) + '</td>';
+                html += '<td><span class="badge ' + badge + '">' + status + '</span></td>';
+                html += '<td class="mono">' + ttl + '</td>';
+                if (status === "pending") {{
+                    html += '<td class="actions"><button class="btn-action danger"'
+                        + ' onclick="confirmAction(\'' + t.id + '\',\'cancel\')">Cancel</button></td>';
+                }} else if (status === "failed") {{
+                    html += '<td class="actions"><button class="btn-action"'
+                        + ' onclick="confirmAction(\'' + t.id + '\',\'requeue\')">Requeue</button></td>';
+                }} else {{
+                    html += '<td class="actions"></td>';
+                }}
+                html += '</tr>';
+            }}
+            html += '</tbody></table>';
+            if (tasks.length < limit) {{
+                html += '<div class="empty">All tasks loaded</div>';
+                document.getElementById("load-more").style.display = "none";
+            }}
+            table.innerHTML = html;
+        }});
 }}
 connect();
 </script>
@@ -235,6 +332,7 @@ def _queue_cards_html(stats: list[dict[str, Any]]) -> str:
                 <span class="c-running"><span class="num">{q["running"]}</span> running</span>
                 <span class="c-done"><span class="num">{q["completed"]}</span> done</span>
                 <span class="c-failed"><span class="num">{q["failed"]}</span> failed</span>
+                <span class="c-cancelled"><span class="num">{q["cancelled"]}</span> cancelled</span>
             </div>
         </div>"""
     return cards
@@ -262,12 +360,25 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
     for t in tasks:
         tid = str(t.get("id", ""))[:8]
         status = t.get("status", "unknown")
-        badge = f"badge-{status}" if status in ("pending", "running", "completed", "failed") else "badge-pending"
+        valid_statuses = ("pending", "running", "completed", "failed", "cancelled")
+        badge = f"badge-{status}" if status in valid_statuses else "badge-pending"
 
         args_str = _args_str(t)
         result_val = t.get("result")
         error_val = t.get("error")
         ttl = t.get("ttl_remaining", "")
+
+        action_buttons = ""
+        if status == "pending":
+            action_buttons = (
+                f'<button class="btn-action danger"'
+                f' onclick="confirmAction(\'{t["id"]}\',\'cancel\')">Cancel</button>'
+            )
+        elif status == "failed":
+            action_buttons = (
+                f'<button class="btn-action"'
+                f' onclick="confirmAction(\'{t["id"]}\',\'requeue\')">Requeue</button>'
+            )
 
         rows += f"""
         <tr>
@@ -279,6 +390,7 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
             <td class="trunc err" title="{error_val or ""}">{_fmt(error_val)}</td>
             <td><span class="badge {badge}">{status}</span></td>
             <td class="mono">{ttl}</td>
+            <td class="actions">{action_buttons}</td>
         </tr>"""
     return f"""
     <table>
@@ -292,6 +404,7 @@ def _tasks_table_html(tasks: list[dict[str, Any]]) -> str:
                 <th>Error</th>
                 <th>Status</th>
                 <th>TTL</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>{rows}</tbody>

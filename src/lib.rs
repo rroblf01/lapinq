@@ -25,7 +25,7 @@ const SCHEMA_SQL: &str = "
         args         JSONB NOT NULL DEFAULT '[]',
         kwargs       JSONB NOT NULL DEFAULT '{}',
         status       TEXT NOT NULL DEFAULT 'pending'
-                     CHECK (status IN ('pending','running','completed','failed')),
+                     CHECK (status IN ('pending','running','completed','failed','cancelled')),
         result       TEXT,
         error        TEXT,
         attempts     INT NOT NULL DEFAULT 0,
@@ -38,9 +38,6 @@ const SCHEMA_SQL: &str = "
         last_heartbeat TIMESTAMPTZ,
         worker_id    TEXT
     );
-    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
-    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
-    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds INT;
     CREATE INDEX IF NOT EXISTS idx_tasks_status
         ON lapinq_tasks(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_scheduled
@@ -50,6 +47,14 @@ const SCHEMA_SQL: &str = "
         ON lapinq_tasks(priority DESC, created_at)
         WHERE status = 'pending';
 ";
+
+const SCHEMA_V1_SQL: &str = "
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds DOUBLE PRECISION;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ;
+";
+
+const MIGRATIONS: &[&str] = &[SCHEMA_V1_SQL];
 
 pub async fn connect_db(database_url: &str) -> Pool {
     let mut cfg = Config::new();
@@ -61,12 +66,68 @@ pub async fn connect_db(database_url: &str) -> Pool {
         .expect("Failed to create PostgreSQL connection pool")
 }
 
+#[cfg(feature = "tls")]
+pub async fn connect_db_tls(database_url: &str) -> Pool {
+    let mut cfg = Config::new();
+    cfg.url = Some(database_url.to_string());
+    cfg.manager = Some(ManagerConfig {
+        recycling_method: RecyclingMethod::Fast,
+    });
+    let tls = tokio_postgres_rustls::MakeRustlsConnect::new(
+        rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth(),
+    );
+    cfg.create_pool(Some(Runtime::Tokio1), tls)
+        .expect("Failed to create TLS PostgreSQL connection pool")
+}
+
 pub async fn ensure_schema(pool: &Pool) {
     let client = pool.get().await.expect("Failed to get connection");
     client
         .batch_execute(SCHEMA_SQL)
         .await
         .expect("Failed to create schema");
+
+    client
+        .execute(
+            "CREATE TABLE IF NOT EXISTS lapinq_schema_version (version INT PRIMARY KEY)",
+            &[],
+        )
+        .await
+        .expect("Failed to create schema_version table");
+
+    client
+        .execute(
+            "INSERT INTO lapinq_schema_version (version) VALUES (0) ON CONFLICT DO NOTHING",
+            &[],
+        )
+        .await
+        .expect("Failed to insert initial schema version");
+
+    let current_version: i32 = client
+        .query_one("SELECT version FROM lapinq_schema_version", &[])
+        .await
+        .expect("Failed to read schema version")
+        .get(0);
+
+    for (i, migration) in MIGRATIONS.iter().enumerate() {
+        let version = (i + 1) as i32;
+        if version > current_version {
+            client
+                .batch_execute(migration)
+                .await
+                .unwrap_or_else(|_| panic!("Failed to apply migration v{}", version));
+            client
+                .execute(
+                    "UPDATE lapinq_schema_version SET version = $1",
+                    &[&version],
+                )
+                .await
+                .expect("Failed to update schema version");
+        }
+    }
 }
 
 pub async fn claim_task(
@@ -171,6 +232,32 @@ pub async fn heartbeat_worker(
         )
         .await?;
     Ok(())
+}
+
+pub async fn recover_stale_tasks(
+    pool: &Pool,
+    max_running_seconds: i32,
+) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "UPDATE lapinq_tasks
+             SET status = 'pending',
+                 started_at = NULL,
+                 worker_id = NULL,
+                 attempts = attempts + 1,
+                 error = 'recovered after timeout'
+             WHERE id = ANY(
+                 SELECT id FROM lapinq_tasks
+                 WHERE status = 'running'
+                 AND started_at < now() - ($1::text || ' seconds')::interval
+                 FOR UPDATE SKIP LOCKED
+             )
+             RETURNING id",
+            &[&max_running_seconds.to_string()],
+        )
+        .await?;
+    Ok(rows.iter().map(|r| r.get(0)).collect())
 }
 
 pub fn retry_backoff_seconds(attempt: i32) -> i32 {

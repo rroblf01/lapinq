@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import logging
 import os
 import time
@@ -27,6 +28,16 @@ from lapinq.worker import run_worker_inline
 logger = logging.getLogger("lapinq.server")
 
 MAX_PAYLOAD_SIZE = int(os.environ.get("LAPINQ_MAX_PAYLOAD_SIZE", str(1024 * 100)))
+API_PREFIX = os.environ.get("LAPINQ_API_PREFIX", "/api/v1")
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -37,9 +48,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.method == "OPTIONS":
             return await call_next(request)
-        if request.url.path.startswith("/api/"):
-            key = request.headers.get("X-API-Key")
-            if key != self.api_key:
+        if request.url.path.startswith(f"{API_PREFIX}/"):
+            key = request.headers.get("X-API-Key", "")
+            if not hmac.compare_digest(key, self.api_key):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         return await call_next(request)
 
@@ -51,20 +62,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.window_seconds = window_seconds
         self.max_clients = max_clients
         self._requests: dict[str, list[float]] = {}
+        self._lock = asyncio.Lock()
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
-        if not request.url.path.startswith("/api/"):
+        if not request.url.path.startswith(f"{API_PREFIX}/"):
             return await call_next(request)
         ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
         window_start = now - self.window_seconds
-        self._evict(window_start)
-        timestamps = self._requests.get(ip, [])
-        timestamps = [t for t in timestamps if t > window_start]
-        if len(timestamps) >= self.max_requests:
-            return JSONResponse({"error": "rate limit exceeded"}, status_code=429)
-        timestamps.append(now)
-        self._requests[ip] = timestamps
+
+        async with self._lock:
+            self._evict(window_start)
+            timestamps = self._requests.get(ip, [])
+            timestamps = [t for t in timestamps if t > window_start]
+            if len(timestamps) >= self.max_requests:
+                return JSONResponse({"error": "rate limit exceeded"}, status_code=429)
+            timestamps.append(now)
+            self._requests[ip] = timestamps
+
         return await call_next(request)
 
     def _evict(self, window_start: float) -> None:
@@ -87,6 +102,28 @@ async def _cleanup_loop(storage: Storage, interval: float) -> None:
             logger.exception("Cleanup loop error")
 
 
+async def _archive_loop(storage: Storage, max_age_days: float, interval: float) -> None:
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            archived = await storage.archive_old_tasks(max_age_days=max_age_days)
+            if archived:
+                logger.info("Archive loop removed %d tasks", archived)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("Archive loop error")
+
+
+def _parse_int_param(value: str | None, default: int, name: str) -> tuple[int, JSONResponse | None]:
+    if value is None:
+        return default, None
+    try:
+        return int(value), None
+    except (ValueError, TypeError):
+        return default, JSONResponse({"error": f"invalid {name}"}, status_code=400)
+
+
 def create_app(
     database_url: str = "postgresql://localhost:5432/lapinq",
     api_key: str | None = None,
@@ -96,21 +133,27 @@ def create_app(
     worker_poll_interval: float = 0.1,
     worker_timeout: int = 300,
     cleanup_interval: float = 0,
+    archive_max_age_days: float = 0,
+    archive_interval: float = 86400,
 ) -> Starlette:
-    routes = [
+    api_prefix = API_PREFIX
+    dashboard_routes = [
         Route("/", dashboard, methods=["GET"]),
         WebSocketRoute("/ws", ws_endpoint),
-        Route("/api/enqueue", enqueue, methods=["POST"]),
-        Route("/api/queues", queue_stats, methods=["GET"]),
-        Route("/api/tasks/html", tasks_html_endpoint, methods=["GET"]),
-        Route("/api/queues/html", queues_html_endpoint, methods=["GET"]),
-        Route("/api/tasks", list_tasks, methods=["GET"]),
-        Route("/api/tasks/failed", list_failed_tasks, methods=["GET"]),
-        Route("/api/tasks/{task_id:str}", get_task, methods=["GET"]),
-        Route("/api/tasks/{task_id:str}", cancel_task, methods=["DELETE"]),
-        Route("/api/tasks/{task_id:str}/requeue", requeue_task, methods=["POST"]),
         Route("/health", health, methods=["GET"]),
         Route("/metrics", metrics, methods=["GET"]),
+    ]
+    api_routes = [
+        Route(f"{api_prefix}/enqueue", enqueue, methods=["POST"]),
+        Route(f"{api_prefix}/queues", queue_stats, methods=["GET"]),
+        Route(f"{api_prefix}/tasks/html", tasks_html_endpoint, methods=["GET"]),
+        Route(f"{api_prefix}/queues/html", queues_html_endpoint, methods=["GET"]),
+        Route(f"{api_prefix}/tasks", list_tasks, methods=["GET"]),
+        Route(f"{api_prefix}/tasks/failed", list_failed_tasks, methods=["GET"]),
+        Route(f"{api_prefix}/tasks/{{task_id:str}}", get_task, methods=["GET"]),
+        Route(f"{api_prefix}/tasks/{{task_id:str}}/result", get_task_result, methods=["GET"]),
+        Route(f"{api_prefix}/tasks/{{task_id:str}}", cancel_task, methods=["DELETE"]),
+        Route(f"{api_prefix}/tasks/{{task_id:str}}/requeue", requeue_task, methods=["POST"]),
     ]
 
     @asynccontextmanager
@@ -136,6 +179,12 @@ def create_app(
             bg_tasks.append(
                 asyncio.create_task(_cleanup_loop(storage, cleanup_interval))
             )
+        if archive_max_age_days > 0:
+            bg_tasks.append(
+                asyncio.create_task(
+                    _archive_loop(storage, archive_max_age_days, archive_interval)
+                )
+            )
         yield
         for t in bg_tasks:
             t.cancel()
@@ -145,6 +194,7 @@ def create_app(
 
     cors_origins = os.environ.get("LAPINQ_CORS_ORIGINS", "*").split(",")
     middleware: list[Middleware] = [
+        Middleware(RequestIDMiddleware),
         Middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
@@ -157,12 +207,23 @@ def create_app(
     if rate_limit > 0:
         middleware.append(Middleware(RateLimitMiddleware, max_requests=rate_limit))
 
-    app = Starlette(routes=routes, lifespan=lifespan, middleware=middleware)
+    app = Starlette(routes=dashboard_routes + api_routes, lifespan=lifespan, middleware=middleware)
     return app
 
 
 async def enqueue(request: Request) -> JSONResponse:
     storage: Storage = request.app.state.storage
+
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_PAYLOAD_SIZE:
+                return JSONResponse(
+                    {"error": f"payload too large (max {MAX_PAYLOAD_SIZE} bytes)"},
+                    status_code=413,
+                )
+        except (ValueError, TypeError):
+            pass
 
     try:
         body = await request.json()
@@ -228,7 +289,9 @@ async def list_tasks(request: Request) -> JSONResponse:
     storage: Storage = request.app.state.storage
     queue_name = request.query_params.get("queue")
     status = request.query_params.get("status")
-    limit = int(request.query_params.get("limit", "50"))
+    limit, err = _parse_int_param(request.query_params.get("limit", "50"), 50, "limit")
+    if err:
+        return err
     tasks = await storage.list_tasks(queue_name=queue_name, status=status, limit=limit)
     return JSONResponse([_serialize_task(t) for t in tasks])
 
@@ -236,7 +299,9 @@ async def list_tasks(request: Request) -> JSONResponse:
 async def list_failed_tasks(request: Request) -> JSONResponse:
     storage: Storage = request.app.state.storage
     queue_name = request.query_params.get("queue")
-    limit = int(request.query_params.get("limit", "50"))
+    limit, err = _parse_int_param(request.query_params.get("limit", "50"), 50, "limit")
+    if err:
+        return err
     tasks = await storage.list_failed_tasks(queue_name=queue_name, limit=limit)
     return JSONResponse([_serialize_task(t) for t in tasks])
 
@@ -250,6 +315,19 @@ async def get_task(request: Request) -> JSONResponse:
     if task is None:
         return JSONResponse({"error": "task not found"}, status_code=404)
     return JSONResponse(_serialize_task(task))
+
+
+async def get_task_result(request: Request) -> JSONResponse:
+    storage: Storage = request.app.state.storage
+    task_id = _parse_uuid(request.path_params["task_id"])
+    if task_id is None:
+        return JSONResponse({"error": "invalid task id"}, status_code=400)
+    result = await storage.get_task_result(task_id)
+    if result is None:
+        return JSONResponse({"error": "task not found"}, status_code=404)
+    if result["status"] not in ("completed", "failed"):
+        return JSONResponse({"error": "task not finished", "status": result["status"]}, status_code=200)
+    return JSONResponse(result)
 
 
 async def cancel_task(request: Request) -> JSONResponse:
@@ -280,11 +358,13 @@ async def queues_html_endpoint(request: Request) -> HTMLResponse:
     return queues_html(stats)
 
 
-async def tasks_html_endpoint(request: Request) -> HTMLResponse:
+async def tasks_html_endpoint(request: Request) -> Response:
     storage: Storage = request.app.state.storage
     queue_name = request.query_params.get("queue")
     status = request.query_params.get("status")
-    limit = int(request.query_params.get("limit", "20"))
+    limit, err = _parse_int_param(request.query_params.get("limit", "20"), 20, "limit")
+    if err:
+        return err
     tasks = await storage.list_tasks(queue_name=queue_name, status=status, limit=limit)
     serialized = [_serialize_task(t) for t in tasks]
     return tasks_html(serialized)
@@ -351,8 +431,12 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 if ci:
                     payload["cleanup_interval"] = ci
                 await websocket.send_json(payload)
+        except WebSocketDisconnect:
+            raise
         except Exception:
             logger.exception("Error in WebSocket _send")
+            with contextlib.suppress(Exception):
+                await websocket.close(1011)
 
     await _send()
 
@@ -409,7 +493,7 @@ async def health(request: Request) -> JSONResponse:
     storage: Storage = request.app.state.storage
     try:
         async with storage.pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
+            await asyncio.wait_for(conn.fetchval("SELECT 1"), timeout=5)
         return JSONResponse({"status": "ok", "database": "connected"})
     except Exception as e:
         return JSONResponse({"status": "error", "database": str(e)}, status_code=503)
@@ -423,10 +507,13 @@ async def metrics(request: Request) -> Response:
         "# TYPE lapinq_tasks gauge",
     ]
     for q in stats:
-        for status in ("pending", "running", "completed", "failed"):
+        for status in ("pending", "running", "completed", "failed", "cancelled"):
             lines.append(
                 f'lapinq_tasks{{queue="{q["queue_name"]}",status="{status}"}} {q[status]}'
             )
+    lines.append("# HELP lapinq_info Lapinq metadata")
+    lines.append("# TYPE lapinq_info gauge")
+    lines.append('lapinq_info{version="1.0.0"} 1')
     lines.append("")
     return Response("\n".join(lines), media_type="text/plain; version=0.0.4")
 

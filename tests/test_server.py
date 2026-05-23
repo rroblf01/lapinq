@@ -28,6 +28,58 @@ async def test_health():
         await storage.close()
 
 
+async def test_get_task_result():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            create_resp = await client.post(
+                "/api/v1/enqueue",
+                json={"task_name": "result_test", "queue_name": "q1", "module_path": "m1", "max_retries": 0},
+            )
+            task_id = create_resp.json()["task_id"]
+            tid = uuid.UUID(task_id)
+            await storage.claim_task("w1")
+            await storage.complete_task(tid, result='"done"')
+
+            resp = await client.get(f"/api/v1/tasks/{task_id}/result")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "completed"
+            assert data["result"] == '"done"'
+            assert "error" not in data or data["error"] is None
+    finally:
+        await storage.close()
+
+
+async def test_get_task_result_not_finished():
+    storage = await Storage.create(DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL)
+    app.state.storage = storage
+    try:
+        async with (
+            httpx.ASGITransport(app=app) as transport,
+            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        ):
+            create_resp = await client.post(
+                "/api/v1/enqueue",
+                json={"task_name": "not_done", "queue_name": "q1", "module_path": "m1"},
+            )
+            task_id = create_resp.json()["task_id"]
+
+            resp = await client.get(f"/api/v1/tasks/{task_id}/result")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "pending"
+            assert data["error"] == "task not finished"
+    finally:
+        await storage.close()
+
+
 async def test_enqueue_endpoint():
     storage = await Storage.create(DATABASE_URL)
     app = create_app(database_url=DATABASE_URL)
@@ -44,7 +96,7 @@ async def test_enqueue_endpoint():
                 "args": [1],
                 "kwargs": {"codec": "h264"},
             }
-            resp = await client.post("/api/enqueue", json=payload)
+            resp = await client.post("/api/v1/enqueue", json=payload)
             assert resp.status_code == 201
             data = resp.json()
             assert "task_id" in data
@@ -62,7 +114,7 @@ async def test_enqueue_missing_task_name():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.post("/api/enqueue", json={"queue_name": "test"})
+            resp = await client.post("/api/v1/enqueue", json={"queue_name": "test"})
             assert resp.status_code == 400
             assert "task_name" in resp.json()["error"]
     finally:
@@ -79,15 +131,15 @@ async def test_list_tasks():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "task1", "queue_name": "q1", "module_path": "m1"},
             )
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "task2", "queue_name": "q1", "module_path": "m1"},
             )
 
-            resp = await client.get("/api/tasks")
+            resp = await client.get("/api/v1/tasks")
             assert resp.status_code == 200
             tasks = resp.json()
             assert len(tasks) == 2
@@ -105,7 +157,7 @@ async def test_get_task():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             create_resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "get_me", "queue_name": "q1", "module_path": "m1"},
             )
             task_id = create_resp.json()["task_id"]
@@ -157,7 +209,7 @@ async def test_cancel_task():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             create_resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "cancel_me", "queue_name": "q1", "module_path": "m1"},
             )
             task_id = create_resp.json()["task_id"]
@@ -194,15 +246,15 @@ async def test_queue_stats():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "t1", "queue_name": "q1", "module_path": "m1"},
             )
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "t2", "queue_name": "q1", "module_path": "m1"},
             )
 
-            resp = await client.get("/api/queues")
+            resp = await client.get("/api/v1/queues")
             assert resp.status_code == 200
             stats = resp.json()
             q1_stats = [s for s in stats if s["queue_name"] == "q1"]
@@ -223,7 +275,7 @@ async def test_dashboard_page():
         ):
             resp = await client.get("/")
             assert resp.status_code == 200
-            assert "Lagomorph Dashboard" in resp.text
+            assert "Lapinq Dashboard" in resp.text
     finally:
         await storage.close()
 
@@ -238,7 +290,7 @@ async def test_metrics_endpoint():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "t1", "queue_name": "q1", "module_path": "m1"},
             )
             resp = await client.get("/metrics")
@@ -260,7 +312,7 @@ async def test_auth_middleware_blocks_without_key():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.get("/api/queues")
+            resp = await client.get("/api/v1/queues")
             assert resp.status_code == 401
             assert resp.json()["error"] == "unauthorized"
     finally:
@@ -276,7 +328,7 @@ async def test_auth_middleware_allows_valid_key():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.get("/api/queues", headers={"X-API-Key": "secret-42"})
+            resp = await client.get("/api/v1/queues", headers={"X-API-Key": "secret-42"})
             assert resp.status_code == 200
     finally:
         await storage.close()
@@ -337,7 +389,7 @@ async def test_requeue_not_failed():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "r2", "queue_name": "q1", "module_path": "m1"},
             )
             task_id = resp.json()["task_id"]
@@ -356,7 +408,7 @@ async def test_auth_does_not_block_options():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.options("/api/queues")
+            resp = await client.options("/api/v1/queues")
             assert resp.status_code == 405
     finally:
         await storage.close()
@@ -375,7 +427,7 @@ async def test_cors_preflight_with_auth():
                 "Origin": "http://example.com",
                 "Access-Control-Request-Method": "GET",
             }
-            resp = await client.options("/api/queues", headers=headers)
+            resp = await client.options("/api/v1/queues", headers=headers)
             assert resp.status_code == 200
     finally:
         await storage.close()
@@ -401,9 +453,9 @@ async def test_rate_limiting_blocks_excess():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             for _ in range(3):
-                r = await client.get("/api/queues")
+                r = await client.get("/api/v1/queues")
                 assert r.status_code == 200
-            r = await client.get("/api/queues")
+            r = await client.get("/api/v1/queues")
             assert r.status_code == 429
             assert r.json()["error"] == "rate limit exceeded"
     finally:
@@ -425,9 +477,9 @@ async def test_enqueue_with_scheduled_at():
                 "module_path": "m1",
                 "scheduled_at": "2099-06-15T12:30:00+00:00",
             }
-            resp = await client.post("/api/enqueue", json=payload)
+            resp = await client.post("/api/v1/enqueue", json=payload)
             assert resp.status_code == 201
-            resp2 = await client.get("/api/tasks")
+            resp2 = await client.get("/api/v1/tasks")
             tasks = resp2.json()
             assert "2099-06-15T12:30:00" in tasks[0]["scheduled_at"]
     finally:
@@ -449,7 +501,7 @@ async def test_enqueue_invalid_scheduled_at():
                 "module_path": "m1",
                 "scheduled_at": "not-a-date",
             }
-            resp = await client.post("/api/enqueue", json=payload)
+            resp = await client.post("/api/v1/enqueue", json=payload)
             assert resp.status_code == 400
             assert "scheduled_at" in resp.json()["error"]
     finally:
@@ -466,7 +518,7 @@ async def test_list_failed_tasks_endpoint():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "f1", "queue_name": "q1", "module_path": "m1", "max_retries": 0},
             )
             task_id = uuid.UUID(resp.json()["task_id"])
@@ -491,7 +543,7 @@ async def test_inline_worker_processes_through_server():
     app = create_app(database_url=DATABASE_URL, worker=True, worker_poll_interval=0.05)
     with TestClient(app) as client:
         resp = client.post(
-            "/api/enqueue",
+            "/api/v1/enqueue",
             json={
                 "task_name": "add",
                 "queue_name": "test_inline_srv",
@@ -520,7 +572,7 @@ async def test_requeue_endpoint():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "r1", "queue_name": "q2", "module_path": "m1", "max_retries": 0},
             )
             task_id = uuid.UUID(resp.json()["task_id"])
@@ -543,7 +595,7 @@ async def test_enqueue_with_ttl_seconds():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "ttl_task", "queue_name": "q1", "module_path": "m1", "ttl_seconds": 7200},
             )
             assert resp.status_code == 201
@@ -565,7 +617,7 @@ async def test_enqueue_ttl_zero():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "volatile", "queue_name": "q1", "module_path": "m1", "ttl_seconds": 0},
             )
             assert resp.status_code == 201
@@ -586,7 +638,7 @@ async def test_enqueue_invalid_ttl():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             resp = await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "bad_ttl", "queue_name": "q1", "module_path": "m1", "ttl_seconds": "not-a-number"},
             )
             assert resp.status_code == 400
@@ -620,7 +672,7 @@ async def test_list_tasks_with_status():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "t1", "queue_name": "q1", "module_path": "m1"},
             )
             t2 = await storage.enqueue("t2", "q1", "m1")
@@ -689,11 +741,11 @@ async def test_metrics_with_multiple_queues():
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "m1", "queue_name": "qa", "module_path": "mp"},
             )
             await client.post(
-                "/api/enqueue",
+                "/api/v1/enqueue",
                 json={"task_name": "m2", "queue_name": "qb", "module_path": "mp"},
             )
             resp = await client.get("/metrics")

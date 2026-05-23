@@ -73,7 +73,7 @@ def test_queue_sends_http_request(task_queue):
 
         mock_post.assert_called_once()
         call_kwargs = mock_post.call_args
-        assert call_kwargs[0][0] == "http://test:8001/api/enqueue"
+        assert call_kwargs[0][0] == "http://test:8001/api/v1/enqueue"
         payload = call_kwargs[1]["json"]
         assert payload["task_name"] == "send_me"
         assert payload["queue_name"] == "test_queue"

@@ -1,4 +1,4 @@
-# Lagomorph
+# Lapinq
 
 **A lightweight task queue with PostgreSQL backend — replacing Celery + RabbitMQ with a single container.**
 
@@ -38,7 +38,7 @@ task_id = response.json()["task_id"]
 
 ```
 ┌──────────────┐     HTTP      ┌──────────────────┐     SQL      ┌────────────┐
-│  Web App     │ ──────────►   │  Lagomorph Server│ ─────────►   │ PostgreSQL │
+│  Web App     │ ──────────►   │  Lapinq Server  │ ─────────►   │ PostgreSQL │
 │  (FastAPI/   │               │  (Starlette +     │              │            │
 │   Django)    │               │   Inline Worker)  │              │  tasks     │
 │              │               │  - REST API       │              └────────────┘
@@ -51,7 +51,7 @@ Or with separate Rust worker for production:
 
 ```
 ┌──────────────┐     HTTP      ┌──────────────────┐
-│  Web App     │ ──────────►   │  Lagomorph Server│ ────┐
+│  Web App     │ ──────────►   │  Lapinq Server  │ ────┐
 │  (FastAPI/   │               │  (no worker)      │     │
 │   Django)    │               └───────────────────┘     │  SQL
 │              │                                         │

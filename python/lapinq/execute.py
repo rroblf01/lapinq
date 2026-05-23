@@ -47,10 +47,10 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
             loop = asyncio.get_running_loop()
             raw = await loop.run_in_executor(None, lambda: _rust_fn(task_data))
             return json.loads(raw)
-        except TypeError:
-            pass
-        except Exception:
-            pass
+        except TypeError as e:
+            logger.debug("Rust executor rejected task %s: %s", task_name, e)
+        except Exception as e:
+            logger.warning("Rust executor failed for %s, falling back to Python: %s", task_name, e)
 
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))

@@ -38,8 +38,18 @@ def _build_payload(
 def _resolve_module(func: Any) -> tuple[str, str]:
     module = inspect.getmodule(func)
     if module is None:
-        return func.__qualname__, func.__module__
+        raise ValueError(
+            f"Cannot resolve module for {func.__qualname__!r}. "
+            "Ensure the function is defined in an importable module."
+        )
     return f"{module.__name__}.{func.__qualname__}", module.__name__
+
+
+def _headers(api_key: str | None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if api_key is not None:
+        headers["X-API-Key"] = api_key
+    return headers
 
 
 class TaskQueue:
@@ -48,12 +58,20 @@ class TaskQueue:
         server_url: str = "http://127.0.0.1:8001",
         queue_name: str = "default",
         timeout: float = 30.0,
+        api_key: str | None = None,
     ):
         self.server_url = server_url.rstrip("/")
         self.queue_name = queue_name
         self.timeout = timeout
+        self.api_key = api_key
         self._client = httpx.Client(timeout=timeout)
         self._registry: dict[str, str] = {}
+
+    def __enter__(self) -> TaskQueue:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
 
     def task(
         self,
@@ -92,8 +110,9 @@ class TaskQueue:
                 func, task_name, q, module_path, scheduled_at, max_retries, priority, ttl_seconds, args, kwargs,
             )
             return self._client.post(
-                f"{self.server_url}/api/enqueue",
+                f"{self.server_url}/api/v1/enqueue",
                 json=payload,
+                headers=_headers(self.api_key),
             )
 
         func.queue = queue  # type: ignore[attr-defined]
@@ -110,12 +129,20 @@ class AsyncTaskQueue:
         server_url: str = "http://127.0.0.1:8001",
         queue_name: str = "default",
         timeout: float = 30.0,
+        api_key: str | None = None,
     ):
         self.server_url = server_url.rstrip("/")
         self.queue_name = queue_name
         self.timeout = timeout
+        self.api_key = api_key
         self._client = httpx.AsyncClient(timeout=timeout)
         self._registry: dict[str, str] = {}
+
+    async def __aenter__(self) -> AsyncTaskQueue:
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        await self.close()
 
     def task(
         self,
@@ -154,8 +181,9 @@ class AsyncTaskQueue:
                 func, task_name, q, module_path, scheduled_at, max_retries, priority, ttl_seconds, args, kwargs,
             )
             return await self._client.post(
-                f"{self.server_url}/api/enqueue",
+                f"{self.server_url}/api/v1/enqueue",
                 json=payload,
+                headers=_headers(self.api_key),
             )
 
         func.aqueue = aqueue  # type: ignore[attr-defined]

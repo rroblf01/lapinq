@@ -131,7 +131,8 @@ async def test_cancel_task():
         cancelled = await storage.cancel_task(task_id)
         assert cancelled is True
         task = await storage.get_task(task_id)
-        assert task is None
+        assert task is not None
+        assert task["status"] == "cancelled"
     finally:
         await storage.close()
 
@@ -352,7 +353,8 @@ async def test_cleanup_expired_tasks():
         assert count >= 1
 
         after = await storage.get_task(tid_exp)
-        assert after is None
+        assert after is not None
+        assert after["status"] == "expired"
 
         kept = await storage.get_task(tid2)
         assert kept is not None
