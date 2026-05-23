@@ -21,9 +21,10 @@ jobs:
           python-version: "3.14"
       - name: Build wheel
         run: |
-          pip install maturin
+          pip install "maturin[zig]"
           maturin build --release --out dist --compatibility manylinux_2_28 \
-            --target ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }}
+            --target ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }} \
+            --zig
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
