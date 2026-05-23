@@ -297,8 +297,23 @@ async def test_rust_worker_binary_processes_task():
         async def get_completed():
             t = await storage.get_task(task_id)
             return t if t and t["status"] == "completed" else None
-        task = await poll_until(get_completed, timeout=10)
-        assert task is not None
+        task = await poll_until(get_completed, timeout=15)
+        if task is None:
+            task = await storage.get_task(task_id)
+            try:
+                async with asyncio.timeout(2):
+                    stdout, stderr = await proc.communicate()
+            except (asyncio.TimeoutError, TimeoutError):
+                proc.kill()
+                stdout, stderr = await proc.communicate()
+            msg = "Task not completed"
+            if task:
+                msg += f" (status={task['status']}, error={task.get('error')})"
+            if stderr:
+                msg += f"\nRust worker stderr:\n{stderr.decode(errors='replace')}"
+            if stdout:
+                msg += f"\nRust worker stdout:\n{stdout.decode(errors='replace')}"
+            pytest.fail(msg)
         assert task["status"] == "completed", f"Task status: {task['status']}, error: {task.get('error')}"
         assert task["result"] == "30"
 

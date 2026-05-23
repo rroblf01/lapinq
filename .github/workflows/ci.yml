@@ -103,24 +103,18 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
 
-  test-windows:
-    runs-on: windows-latest
+  test-macos:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ikalnytskyi/action-setup-postgres@v8
+        with:
+          password: test
+          database: lapinq_test
+          postgres-version: "16"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install PostgreSQL (chocolatey)
-        shell: pwsh
-        run: |
-          choco install postgresql --params "'/Password:test'" --force --no-progress
-          $pgDir = Get-ChildItem "C:\Program Files\PostgreSQL" -Directory `
-            | Sort-Object Name -Descending | Select-Object -First 1
-          $pgBin = Join-Path $pgDir.FullName "bin"
-          echo "$pgBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Start-Service -Name "postgresql*" -ErrorAction SilentlyContinue
-          Start-Sleep 5
-          & "$pgBin\psql" -U postgres -c "CREATE DATABASE lapinq_test;"
       - name: Install uv
         run: pip install uv
       - name: Install maturin
@@ -132,26 +126,19 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
 
-  test-macos:
-    runs-on: macos-latest
+  test-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ikalnytskyi/action-setup-postgres@v8
+        with:
+          password: test
+          database: lapinq_test
+          postgres-version: "16"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install and start PostgreSQL
-        run: |
-          brew install postgresql
-          brew services start postgresql
-          sleep 3
-          for i in $(seq 1 20); do
-            pg_isready && break
-            sleep 1
-          done
-          psql -c "CREATE ROLE postgres LOGIN SUPERUSER PASSWORD 'test';" postgres 2>/dev/null || true
-          psql -c "CREATE DATABASE lapinq_test OWNER postgres;" postgres 2>/dev/null || true
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install uv
         run: pip install uv
       - name: Install maturin

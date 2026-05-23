@@ -1,6 +1,10 @@
 # Stage 1: Build Rust worker
 FROM rust:1.95-slim-bookworm AS builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
@@ -22,7 +26,7 @@ COPY --from=builder /build/target/release/lapinq-worker /usr/local/bin/lapinq-wo
 # Install Python package
 COPY pyproject.toml Cargo.toml README.md ./
 COPY python/ python/
-COPY src/main.rs src/
+COPY src/ src/
 RUN pip install --no-cache-dir maturin && maturin develop --release
 
 EXPOSE 8001
