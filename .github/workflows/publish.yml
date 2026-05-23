@@ -21,7 +21,7 @@ jobs:
       - name: Build wheel
         run: |
           pip install maturin
-          maturin build --release --out dist --manylinux auto \
+          maturin build --release --out dist --compatibility manylinux_2_28 \
             --target ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }}
       - name: Upload wheel
         uses: actions/upload-artifact@v4
