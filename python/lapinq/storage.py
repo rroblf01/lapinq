@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS lapinq_tasks (
     args         JSONB NOT NULL DEFAULT '[]',
     kwargs       JSONB NOT NULL DEFAULT '{}',
     status       TEXT NOT NULL DEFAULT 'pending'
-                 CHECK (status IN ('pending','running','completed','failed','cancelled')),
+                 CHECK (status IN ('pending','running','completed','failed','cancelled','expired')),
     result       TEXT,
     error        TEXT,
     attempts     INT NOT NULL DEFAULT 0,
@@ -59,6 +59,11 @@ MIGRATIONS: list[str] = [
     ALTER TABLE lapinq_tasks DROP CONSTRAINT IF EXISTS lapinq_tasks_status_check;
     ALTER TABLE lapinq_tasks ADD CONSTRAINT lapinq_tasks_status_check
         CHECK (status IN ('pending','running','completed','failed','cancelled'));
+    """,
+    """
+    ALTER TABLE lapinq_tasks DROP CONSTRAINT IF EXISTS lapinq_tasks_status_check;
+    ALTER TABLE lapinq_tasks ADD CONSTRAINT lapinq_tasks_status_check
+        CHECK (status IN ('pending','running','completed','failed','cancelled','expired'));
     """,
 ]
 

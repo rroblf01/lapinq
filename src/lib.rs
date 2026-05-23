@@ -25,7 +25,7 @@ const SCHEMA_SQL: &str = "
         args         JSONB NOT NULL DEFAULT '[]',
         kwargs       JSONB NOT NULL DEFAULT '{}',
         status       TEXT NOT NULL DEFAULT 'pending'
-                     CHECK (status IN ('pending','running','completed','failed','cancelled')),
+                     CHECK (status IN ('pending','running','completed','failed','cancelled','expired')),
         result       TEXT,
         error        TEXT,
         attempts     INT NOT NULL DEFAULT 0,

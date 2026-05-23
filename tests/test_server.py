@@ -162,7 +162,7 @@ async def test_get_task():
             )
             task_id = create_resp.json()["task_id"]
 
-            resp = await client.get(f"/api/tasks/{task_id}")
+            resp = await client.get(f"/api/v1/tasks/{task_id}")
             assert resp.status_code == 200
             assert resp.json()["task_name"] == "get_me"
     finally:
@@ -178,7 +178,7 @@ async def test_get_task_not_found():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.get(f"/api/tasks/{uuid.uuid4()}")
+            resp = await client.get(f"/api/v1/tasks/{uuid.uuid4()}")
             assert resp.status_code == 404
     finally:
         await storage.close()
@@ -193,7 +193,7 @@ async def test_invalid_uuid():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.get("/api/tasks/not-a-uuid")
+            resp = await client.get("/api/v1/tasks/not-a-uuid")
             assert resp.status_code == 400
     finally:
         await storage.close()
@@ -214,7 +214,7 @@ async def test_cancel_task():
             )
             task_id = create_resp.json()["task_id"]
 
-            resp = await client.delete(f"/api/tasks/{task_id}")
+            resp = await client.delete(f"/api/v1/tasks/{task_id}")
             assert resp.status_code == 200
             assert resp.json()["status"] == "cancelled"
     finally:
@@ -230,7 +230,7 @@ async def test_cancel_nonexistent_task():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.delete(f"/api/tasks/{uuid.uuid4()}")
+            resp = await client.delete(f"/api/v1/tasks/{uuid.uuid4()}")
             assert resp.status_code == 404
     finally:
         await storage.close()
@@ -373,7 +373,7 @@ async def test_requeue_not_found():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.post(f"/api/tasks/{uuid.uuid4()}/requeue", json={})
+            resp = await client.post(f"/api/v1/tasks/{uuid.uuid4()}/requeue", json={})
             assert resp.status_code == 404
     finally:
         await storage.close()
@@ -393,7 +393,7 @@ async def test_requeue_not_failed():
                 json={"task_name": "r2", "queue_name": "q1", "module_path": "m1"},
             )
             task_id = resp.json()["task_id"]
-            resp = await client.post(f"/api/tasks/{task_id}/requeue", json={})
+            resp = await client.post(f"/api/v1/tasks/{task_id}/requeue", json={})
             assert resp.status_code == 404
     finally:
         await storage.close()
@@ -524,7 +524,7 @@ async def test_list_failed_tasks_endpoint():
             task_id = uuid.UUID(resp.json()["task_id"])
             await storage.claim_task("test-w1")
             await storage.fail_task(task_id, error="boom")
-            resp2 = await client.get("/api/tasks/failed")
+            resp2 = await client.get("/api/v1/tasks/failed")
             assert resp2.status_code == 200
             ids = {t["id"] for t in resp2.json()}
             assert str(task_id) in ids
@@ -557,7 +557,7 @@ async def test_inline_worker_processes_through_server():
 
         await asyncio.sleep(0.5)
 
-        resp2 = client.get(f"/api/tasks/{task_id}")
+        resp2 = client.get(f"/api/v1/tasks/{task_id}")
         assert resp2.status_code == 200
         assert resp2.json()["status"] == "completed"
 
@@ -578,7 +578,7 @@ async def test_requeue_endpoint():
             task_id = uuid.UUID(resp.json()["task_id"])
             await storage.claim_task("test-w2")
             await storage.fail_task(task_id, error="boom")
-            resp2 = await client.post(f"/api/tasks/{task_id}/requeue", json={})
+            resp2 = await client.post(f"/api/v1/tasks/{task_id}/requeue", json={})
             assert resp2.status_code == 200
             assert resp2.json()["status"] == "requeued"
     finally:
@@ -656,7 +656,7 @@ async def test_requeue_invalid_uuid():
             httpx.ASGITransport(app=app) as transport,
             httpx.AsyncClient(transport=transport, base_url="http://test") as client,
         ):
-            resp = await client.post("/api/tasks/not-a-uuid/requeue", json={})
+            resp = await client.post("/api/v1/tasks/not-a-uuid/requeue", json={})
             assert resp.status_code == 400
     finally:
         await storage.close()
@@ -679,13 +679,13 @@ async def test_list_tasks_with_status():
             assert t2 is not None
             await storage.complete_task(t2)
 
-            resp = await client.get("/api/tasks?status=pending")
+            resp = await client.get("/api/v1/tasks?status=pending")
             assert resp.status_code == 200
             names = [t["task_name"] for t in resp.json()]
             assert "t1" in names
             assert "t2" not in names
 
-            resp2 = await client.get("/api/tasks?status=completed")
+            resp2 = await client.get("/api/v1/tasks?status=completed")
             names2 = [t["task_name"] for t in resp2.json()]
             assert "t2" in names2
     finally:
@@ -709,7 +709,7 @@ async def test_list_failed_tasks_with_queue_filter():
             for tid in (t1, t2):
                 await storage.fail_task(tid, error="err")
 
-            resp = await client.get("/api/tasks/failed?queue=qa")
+            resp = await client.get("/api/v1/tasks/failed?queue=qa")
             assert resp.status_code == 200
             assert len(resp.json()) == 1
             assert resp.json()[0]["task_name"] == "f1"

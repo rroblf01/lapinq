@@ -3,7 +3,7 @@ FROM rust:1.95-slim-bookworm AS builder
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
-COPY src/main.rs src/main.rs
+COPY src/ src/
 RUN cargo build --release
 
 # Stage 2: Python runtime

@@ -202,7 +202,7 @@ async def test_tasks_html_with_data():
                 "/api/v1/enqueue",
                 json={"task_name": "my_task", "queue_name": "test_q", "module_path": "m1"},
             )
-            resp = await client.get("/api/tasks/html?limit=20")
+            resp = await client.get("/api/v1/tasks/html?limit=20")
             assert resp.status_code == 200
             assert "my_task" in resp.text
             assert "test_q" in resp.text
