@@ -10,9 +10,9 @@ from lapinq.client import AsyncTaskQueue
 
 logger = logging.getLogger("lapinq.example")
 
-app = FastAPI(title="Lagomorph Example")
+app = FastAPI(title="Lapinq Example")
 
-server_url = os.environ.get("LAGOMORPH_SERVER_URL", "http://lapinq-server:8001")
+server_url = os.environ.get("LAPINQ_SERVER_URL", "http://lapinq-server:8001")
 queue = AsyncTaskQueue(server_url=server_url, queue_name="example")
 api_client = httpx.AsyncClient(base_url=server_url)
 

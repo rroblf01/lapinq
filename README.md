@@ -9,9 +9,9 @@
 
 ---
 
-## Why Lagomorph?
+## Why Lapinq?
 
-Celery + RabbitMQ is powerful but heavyweight for many projects. Lagomorph replaces both with a **single container**:
+Celery + RabbitMQ is powerful but heavyweight for many projects. Lapinq replaces both with a **single container**:
 
 - **No separate broker** — PostgreSQL handles both storage and queueing
 - **No separate worker daemon** — Python or Rust worker built in
@@ -85,7 +85,7 @@ Visit **http://localhost:8001/dashboard** to monitor queues and tasks in real ti
 
 ```
 ┌──────────────┐     HTTP      ┌──────────────────┐     SQL      ┌────────────┐
-│  Web App     │ ──────────►   │  Lagomorph       │ ─────────►   │ PostgreSQL │
+│  Web App     │ ──────────►   │  Lapinq Server   │ ─────────►   │ PostgreSQL │
 │  (FastAPI/   │               │  Server          │              │            │
 │   Django)    │               │  (Starlette)     │              │  Tasks     │
 │              │               │  + Dashboard     │              │            │

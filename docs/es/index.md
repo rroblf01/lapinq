@@ -1,4 +1,4 @@
-# Lagomorph
+# Lapinq
 
 **Una cola de tareas ligera con backend PostgreSQL — reemplazando Celery + RabbitMQ con un solo contenedor.**
 
@@ -39,7 +39,7 @@ task_id = respuesta.json()["task_id"]
 ```
 ┌──────────────┐     HTTP      ┌──────────────────┐     SQL      ┌────────────┐
 │  App Web     │ ──────────►   │  Servidor        │ ─────────►   │ PostgreSQL │
-│  (FastAPI/   │               │  Lagomorph       │              │            │
+│  (FastAPI/   │               │  Lapinq          │              │            │
 │   Django)    │               │  (Starlette +    │              │  tareas    │
 │              │               │   Worker Interno)│              └────────────┘
 └──────────────┘               │  - API REST      │
@@ -53,7 +53,7 @@ O con worker Rust separado para producción:
 ```
 ┌──────────────┐     HTTP      ┌──────────────────┐
 │  App Web     │ ──────────►   │  Servidor        │ ────┐
-│  (FastAPI/   │               │  Lagomorph       │     │
+│  (FastAPI/   │               │  Lapinq          │     │
 │   Django)    │               │  (sin worker)    │     │
 │              │               └──────────────────┘     │  SQL
 │              │                                         │
