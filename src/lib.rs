@@ -1,5 +1,4 @@
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use log::error;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
