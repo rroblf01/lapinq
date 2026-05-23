@@ -54,11 +54,10 @@ jobs:
           path: dist
 
   build-macos:
-    name: macOS ${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }} cp${{ matrix.python-version }}
-    runs-on: ${{ matrix.os }}
+    name: macOS cp${{ matrix.python-version }}
+    runs-on: macos-latest
     strategy:
       matrix:
-        os: [macos-13, macos-14]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
@@ -66,16 +65,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Build wheel
+      - name: Add x86_64 target
+        run: rustup target add x86_64-apple-darwin
+      - name: Build arm64 wheel
         uses: PyO3/maturin-action@v1
         with:
           command: build
           args: --release --out dist
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload wheel
+      - name: Build x86_64 wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist
+          target: x86_64-apple-darwin
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-macos-${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }}-cp${{ matrix.python-version }}
+          name: wheel-macos-cp${{ matrix.python-version }}
           path: dist
 
   build-sdist:
