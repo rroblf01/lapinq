@@ -21,7 +21,7 @@ jobs:
           target: ${{ matrix.target == 'aarch64' && 'aarch64-unknown-linux-gnu' || 'x86_64-unknown-linux-gnu' }}
           args: --release --out dist
           manylinux: auto
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
@@ -45,7 +45,7 @@ jobs:
         with:
           command: build
           args: --release --out dist
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
@@ -72,14 +72,14 @@ jobs:
         with:
           command: build
           args: --release --out dist
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build x86_64 wheel
         uses: PyO3/maturin-action@v1
         with:
           command: build
           args: --release --out dist
           target: x86_64-apple-darwin
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -99,7 +99,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
@@ -125,4 +125,4 @@ jobs:
         with:
           command: upload
           args: --non-interactive --skip-existing dist/*
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
