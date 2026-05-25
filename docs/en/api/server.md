@@ -17,7 +17,7 @@ Create a Starlette ASGI app with the lapinq REST API, dashboard, and optional in
 
 ## Endpoints
 
-### `POST /api/enqueue`
+### `POST /api/v1/enqueue`
 
 Enqueue a new task.
 
@@ -49,13 +49,13 @@ If `ttl_seconds` is `0`, the task is not persisted:
 {"task_id": null, "ttl_seconds": 0}
 ```
 
-### `GET /api/queues`
+### `GET /api/v1/queues`
 
 Queue statistics — pending/running/completed/failed counts per queue.
 
 **Response:** `200 OK`
 
-### `GET /api/tasks`
+### `GET /api/v1/tasks`
 
 List tasks.
 
@@ -65,7 +65,7 @@ List tasks.
 | `status` | — | Filter by status (`pending`, `running`, `completed`, `failed`) |
 | `limit` | `50` | Max results |
 
-### `GET /api/tasks/failed`
+### `GET /api/v1/tasks/failed`
 
 List failed tasks (Dead Letter Queue).
 
@@ -74,19 +74,19 @@ List failed tasks (Dead Letter Queue).
 | `queue` | — | Filter by queue name |
 | `limit` | `50` | Max results |
 
-### `GET /api/tasks/{id}`
+### `GET /api/v1/tasks/{id}`
 
 Get a single task by ID.
 
 **Response:** `200 OK` with full task details, or `404 Not Found`.
 
-### `DELETE /api/tasks/{id}`
+### `DELETE /api/v1/tasks/{id}`
 
 Cancel a pending task (deletes it).
 
 **Response:** `200 OK` or `404 Not Found`.
 
-### `POST /api/tasks/{id}/requeue`
+### `POST /api/v1/tasks/{id}/requeue`
 
 Requeue a failed task back to `pending` status.
 
@@ -132,11 +132,11 @@ Real-time dashboard data. Server sends JSON with `cards` and `table` HTML fragme
 
 ### AuthMiddleware
 
-Set `LAGOMORPH_API_KEY` env var or pass `api_key` to `create_app()`. All `/api/*` routes require `X-API-Key` header (except `OPTIONS`). Dashboard and health endpoints are public.
+Set `LAPINQ_API_KEY` env var or pass `api_key` to `create_app()`. All `/api/*` routes require `X-API-Key` header (except `OPTIONS`). Dashboard and health endpoints are public.
 
 ### RateLimitMiddleware
 
-Set `LAGOMORPH_RATE_LIMIT` env var or pass `rate_limit` to `create_app()`. Limits requests per IP per minute on `/api/*` routes.
+Set `LAPINQ_RATE_LIMIT` env var or pass `rate_limit` to `create_app()`. Limits requests per IP per minute on `/api/*` routes.
 
 ## CLI
 

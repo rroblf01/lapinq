@@ -30,7 +30,8 @@ def procesar_video(video_id: int, codec: str):
     print(f"Processing video {video_id} with {codec}")
 
 # Enqueue the task — runs on the worker
-procesar_video(video_id=1, codec="h264")
+# Use .queue() for sync clients or .aqueue() for async clients
+procesar_video.queue(video_id=1, codec="h264")
 ```
 
 ## Installation

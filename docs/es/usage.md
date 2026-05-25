@@ -94,7 +94,7 @@ def noop():
 ### Encolar una tarea
 
 ```bash
-curl -X POST http://localhost:8001/api/enqueue \
+curl -X POST http://localhost:8001/api/v1/enqueue \
   -H "Content-Type: application/json" \
   -d '{
     "task_name": "mi_tarea",
@@ -112,37 +112,37 @@ curl -X POST http://localhost:8001/api/enqueue \
 ### Listar tareas
 
 ```bash
-curl "http://localhost:8001/api/tasks?limit=10&status=pending&queue=default"
+curl "http://localhost:8001/api/v1/tasks?limit=10&status=pending&queue=default"
 ```
 
 ### Estadísticas de colas
 
 ```bash
-curl http://localhost:8001/api/queues
+curl http://localhost:8001/api/v1/queues
 ```
 
 ### Obtener una tarea
 
 ```bash
-curl http://localhost:8001/api/tasks/<task_id>
+curl http://localhost:8001/api/v1/tasks/<task_id>
 ```
 
 ### Cancelar una tarea pendiente
 
 ```bash
-curl -X DELETE http://localhost:8001/api/tasks/<task_id>
+curl -X DELETE http://localhost:8001/api/v1/tasks/<task_id>
 ```
 
 ### Reencolar una tarea fallida
 
 ```bash
-curl -X POST http://localhost:8001/api/tasks/<task_id>/requeue
+curl -X POST http://localhost:8001/api/v1/tasks/<task_id>/requeue
 ```
 
 ### Listar tareas fallidas (DLQ)
 
 ```bash
-curl http://localhost:8001/api/tasks/failed
+curl http://localhost:8001/api/v1/tasks/failed
 ```
 
 ### Health check

@@ -127,10 +127,10 @@ lapinq-worker --database-url $DATABASE_URL --concurrency 4
 
 ```bash
 # Activar autenticación por API key
-LAGOMORPH_API_KEY=mi-clave-secreta python -m lapinq server
+LAPINQ_API_KEY=mi-clave-secreta python -m lapinq server
 
 # Activar rate limiting (60 peticiones/min por IP)
-LAGOMORPH_RATE_LIMIT=60 python -m lapinq server
+LAPINQ_RATE_LIMIT=60 python -m lapinq server
 ```
 
 ### Monitoreo

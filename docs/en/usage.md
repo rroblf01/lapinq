@@ -94,7 +94,7 @@ def noop():
 ### Enqueue a task
 
 ```bash
-curl -X POST http://localhost:8001/api/enqueue \
+curl -X POST http://localhost:8001/api/v1/enqueue \
   -H "Content-Type: application/json" \
   -d '{
     "task_name": "my_task",
@@ -112,37 +112,37 @@ curl -X POST http://localhost:8001/api/enqueue \
 ### List tasks
 
 ```bash
-curl "http://localhost:8001/api/tasks?limit=10&status=pending&queue=default"
+curl "http://localhost:8001/api/v1/tasks?limit=10&status=pending&queue=default"
 ```
 
 ### Get task stats
 
 ```bash
-curl http://localhost:8001/api/queues
+curl http://localhost:8001/api/v1/queues
 ```
 
 ### Get a single task
 
 ```bash
-curl http://localhost:8001/api/tasks/<task_id>
+curl http://localhost:8001/api/v1/tasks/<task_id>
 ```
 
 ### Cancel a pending task
 
 ```bash
-curl -X DELETE http://localhost:8001/api/tasks/<task_id>
+curl -X DELETE http://localhost:8001/api/v1/tasks/<task_id>
 ```
 
 ### Requeue a failed task
 
 ```bash
-curl -X POST http://localhost:8001/api/tasks/<task_id>/requeue
+curl -X POST http://localhost:8001/api/v1/tasks/<task_id>/requeue
 ```
 
 ### List failed tasks (DLQ)
 
 ```bash
-curl http://localhost:8001/api/tasks/failed
+curl http://localhost:8001/api/v1/tasks/failed
 ```
 
 ### Health check

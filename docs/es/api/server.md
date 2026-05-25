@@ -17,7 +17,7 @@ Crea una aplicación Starlette ASGI con la API REST, dashboard y worker inline o
 
 ## Endpoints
 
-### `POST /api/enqueue`
+### `POST /api/v1/enqueue`
 
 Encola una nueva tarea.
 
@@ -49,13 +49,13 @@ Si `ttl_seconds` es `0`, la tarea no se persiste:
 {"task_id": null, "ttl_seconds": 0}
 ```
 
-### `GET /api/queues`
+### `GET /api/v1/queues`
 
 Estadísticas de colas — conteos de pendientes/ejecutándose/completadas/fallidas por cola.
 
 **Respuesta:** `200 OK`
 
-### `GET /api/tasks`
+### `GET /api/v1/tasks`
 
 Listar tareas.
 
@@ -65,7 +65,7 @@ Listar tareas.
 | `status` | — | Filtrar por estado (`pending`, `running`, `completed`, `failed`) |
 | `limit` | `50` | Máx. resultados |
 
-### `GET /api/tasks/failed`
+### `GET /api/v1/tasks/failed`
 
 Listar tareas fallidas (Dead Letter Queue).
 
@@ -74,19 +74,19 @@ Listar tareas fallidas (Dead Letter Queue).
 | `queue` | — | Filtrar por nombre de cola |
 | `limit` | `50` | Máx. resultados |
 
-### `GET /api/tasks/{id}`
+### `GET /api/v1/tasks/{id}`
 
 Obtener una tarea por ID.
 
 **Respuesta:** `200 OK` con detalles completos, o `404 Not Found`.
 
-### `DELETE /api/tasks/{id}`
+### `DELETE /api/v1/tasks/{id}`
 
 Cancelar una tarea pendiente (la elimina).
 
 **Respuesta:** `200 OK` o `404 Not Found`.
 
-### `POST /api/tasks/{id}/requeue`
+### `POST /api/v1/tasks/{id}/requeue`
 
 Reencolar una tarea fallida a estado `pending`.
 
@@ -132,11 +132,11 @@ Datos del dashboard en tiempo real. El servidor envía JSON con fragmentos HTML 
 
 ### AuthMiddleware
 
-Configura la variable de entorno `LAGOMORPH_API_KEY` o pasa `api_key` a `create_app()`. Todas las rutas `/api/*` requieren la cabecera `X-API-Key` (excepto `OPTIONS`). El dashboard y health check son públicos.
+Configura la variable de entorno `LAPINQ_API_KEY` o pasa `api_key` a `create_app()`. Todas las rutas `/api/*` requieren la cabecera `X-API-Key` (excepto `OPTIONS`). El dashboard y health check son públicos.
 
 ### RateLimitMiddleware
 
-Configura `LAGOMORPH_RATE_LIMIT` o pasa `rate_limit` a `create_app()`. Limita peticiones por IP por minuto en rutas `/api/*`.
+Configura `LAPINQ_RATE_LIMIT` o pasa `rate_limit` a `create_app()`. Limita peticiones por IP por minuto en rutas `/api/*`.
 
 ## CLI
 
