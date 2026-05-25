@@ -10,7 +10,7 @@
 - Default TTL — `default_ttl_seconds` on `TaskQueue`/`AsyncTaskQueue` applied when no explicit `ttl_seconds`
 - Webhook callbacks — `webhook_url` per task; worker fires POST on completion/failure
 - `TaskRef` client wrapper — `.task_id`, `.wait(timeout)`, `.awaitait(timeout)` for result polling
-- Manual retry — raise `lapinq.Retry(countdown=N)` inside a task function to retry with custom delay
+- Manual retry — raise `lapinq.RetryError(countdown=N)` inside a task function to retry with custom delay
 - CLI task management — `lapinq task list|get|cancel|requeue` with `--json` output
 - Cron-based periodic scheduler — `lapinq server --scheduler` with 5-field cron expressions
 - New `lapinq_scheduled_tasks` table for defining recurring task schedules

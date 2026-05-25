@@ -13,6 +13,8 @@ tasks = TaskQueue(
     server_url="http://worker:8001",
     queue_name="default",
     timeout=30.0,
+    api_key=None,
+    default_ttl_seconds=None,
 )
 ```
 
@@ -24,6 +26,8 @@ from lapinq import AsyncTaskQueue
 tasks = AsyncTaskQueue(
     server_url="http://worker:8001",
     queue_name="default",
+    api_key=None,
+    default_ttl_seconds=None,
 )
 ```
 
@@ -54,16 +58,18 @@ enviar_email(to="user@example.com", subject="Hola", body="Mundo")  # llama direc
 
 ### Encolando Tareas
 
-Encolar envía un HTTP POST al servidor y retorna inmediatamente:
+Encolar envía un HTTP POST al servidor y retorna un `TaskRef`:
 
 ```python
-# Cliente síncrono
-respuesta = enviar_email.queue(to="user@example.com", subject="Hola", body="Mundo")
-task_id = respuesta.json()["task_id"]
+# Cliente síncrono — devuelve TaskRef
+ref = enviar_email.queue(to="user@example.com", subject="Hola", body="Mundo")
+print(ref.task_id)           # "uuid-here"
+print(ref.wait(timeout=30))  # sondea hasta completar
 
-# Cliente asíncrono
-respuesta = await enviar_email.aqueue(to="user@example.com", subject="Hola", body="Mundo")
-task_id = respuesta.json()["task_id"]
+# Cliente asíncrono — devuelve TaskRef
+ref = await enviar_email.aqueue(to="user@example.com", subject="Hola", body="Mundo")
+result = await ref.awaitait(timeout=30)
+print(result["status"])
 ```
 
 ### Parámetros de Tarea
@@ -74,6 +80,10 @@ task_id = respuesta.json()["task_id"]
 | `max_retries` | `int` | Máx. reintentos al fallar (por defecto 3) |
 | `priority` | `int` | Valores más altos se ejecutan primero (defecto 0) |
 | `ttl_seconds` | `int` | Autoeliminar tarea tras N segundos; `0` = no persistir |
+| `metadata` | `dict` | Pares clave-valor arbitrarios almacenados como JSONB |
+| `retry_delay` | `float` | Espera fija entre reintentos (segundos) |
+| `retry_backoff` | `bool` | Backoff exponencial (por defecto `true`) |
+| `webhook_url` | `str` | URL llamada vía POST al completar/fallar |
 
 ```python
 @tasks.task(name="retrasada", scheduled_at="2026-06-15T12:30:00Z")
@@ -155,6 +165,52 @@ curl http://localhost:8001/health
 
 ```bash
 curl http://localhost:8001/metrics
+```
+
+## CLI de Gestión de Tareas
+
+```bash
+# Listar tareas
+lapinq task list --status pending --limit 20 --json
+
+# Obtener una tarea
+lapinq task get <task_id> --json
+
+# Cancelar una tarea pendiente
+lapinq task cancel <task_id>
+
+# Reencolar una tarea fallida
+lapinq task requeue <task_id>
+```
+
+## Planificador Cron
+
+Programa tareas recurrentes usando expresiones cron de 5 campos:
+
+```bash
+lapinq server --scheduler --scheduler-interval 60
+```
+
+Define los horarios insertando filas en la tabla `lapinq_scheduled_tasks`:
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | `UUID` | Clave primaria |
+| `task_name` | `TEXT` | Nombre de la función de tarea |
+| `module_path` | `TEXT` | Módulo Python a importar |
+| `queue_name` | `TEXT` | Cola donde encolar |
+| `cron_expression` | `TEXT` | Cron de 5 campos (`min hora dia mes dia_semana`) |
+| `args` | `JSONB` | Argumentos posicionales |
+| `kwargs` | `JSONB` | Argumentos nombrados |
+| `enabled` | `BOOLEAN` | `true` = activo, `false` = saltado |
+
+Ejemplo — ejecuta `mi_tarea.cada_minuto` cada minuto:
+
+```sql
+INSERT INTO lapinq_scheduled_tasks
+    (task_name, module_path, queue_name, cron_expression, args, kwargs, enabled)
+VALUES
+    ('cada_minuto', 'miapp.tareas', 'default', '* * * * *', '[]', '{}', true);
 ```
 
 ## Dashboard

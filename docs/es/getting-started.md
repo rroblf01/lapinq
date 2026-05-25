@@ -73,9 +73,10 @@ tasks = TaskQueue(server_url="http://localhost:8001")
 def saludar(nombre: str):
     return f"¡Hola, {nombre}!"
 
-# Encola — se ejecuta asíncronamente en el worker
-respuesta = saludar.queue(nombre="Mundo")
-print(respuesta.json())  # {"task_id": "..."}
+# Encola — devuelve un TaskRef
+ref = saludar.queue(nombre="Mundo")
+print(ref.task_id)  # "uuid-..."
+print(ref.wait(timeout=30))  # sondea el resultado
 ```
 
 ## Cliente Asíncrono
@@ -90,8 +91,9 @@ async def main():
     async def saludar(nombre: str):
         return f"¡Hola, {nombre}!"
 
-    respuesta = await saludar.aqueue(nombre="Mundo")
-    print(respuesta.json())
+    ref = await saludar.aqueue(nombre="Mundo")
+    result = await ref.awaitait(timeout=30)
+    print(result["status"])
 
     await tasks.close()
 ```

@@ -73,9 +73,10 @@ tasks = TaskQueue(server_url="http://localhost:8001")
 def hello(name: str):
     return f"Hello, {name}!"
 
-# Enqueue — runs asynchronously on the worker
-response = hello.queue(name="World")
-print(response.json())  # {"task_id": "..."}
+# Enqueue — returns a TaskRef
+ref = hello.queue(name="World")
+print(ref.task_id)  # "uuid-..."
+print(ref.wait(timeout=30))  # poll for result
 ```
 
 ## Async Client
@@ -90,8 +91,9 @@ async def main():
     async def hello(name: str):
         return f"Hello, {name}!"
 
-    response = await hello.aqueue(name="World")
-    print(response.json())
+    ref = await hello.aqueue(name="World")
+    result = await ref.awaitait(timeout=30)
+    print(result["status"])
 
     await tasks.close()
 ```

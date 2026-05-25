@@ -29,9 +29,10 @@ tasks = TaskQueue(server_url="http://localhost:8001", queue_name="video")
 def procesar_video(video_id: int, codec: str):
     print(f"Procesando video {video_id} con {codec}")
 
-# Encola la tarea — envía HTTP POST al servidor
-respuesta = procesar_video.queue(1, codec="h264")
-task_id = respuesta.json()["task_id"]
+# Encola la tarea — devuelve un TaskRef
+ref = procesar_video.queue(1, codec="h264")
+print(ref.task_id)  # "uuid-..."
+print(ref.wait(timeout=30))  # sondea el resultado
 ```
 
 ## Arquitectura

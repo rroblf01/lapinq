@@ -25,13 +25,13 @@ from lapinq import TaskQueue
 
 tasks = TaskQueue(server_url="http://localhost:8001", queue_name="video")
 
-@tasks.task(name="procesar_video")
-def procesar_video(video_id: int, codec: str):
-    print(f"Processing video {video_id} with {codec}")
+@tasks.task(name="transcode_video")
+def transcode_video(video_id: int, codec: str):
+    print(f"Transcoding video {video_id} to {codec}")
 
 # Enqueue the task — runs on the worker
 # Use .queue() for sync clients or .aqueue() for async clients
-ref = procesar_video.queue(video_id=1, codec="h264")
+ref = transcode_video.queue(video_id=1, codec="h264")
 print(f"Task ID: {ref.task_id}")
 
 # Optional: wait for result (polling)
@@ -132,7 +132,7 @@ Visit **http://localhost:8001/dashboard** to monitor queues and tasks in real ti
 | Default TTL per queue | ✅ |
 | Webhook callbacks | ✅ |
 | `TaskRef` — awaitable results | ✅ |
-| Manual retry (`Retry` exception) | ✅ |
+| Manual retry (`RetryError` exception) | ✅ |
 | CLI task management | ✅ |
 | Cron-based periodic scheduler | ✅ |
 
@@ -198,12 +198,17 @@ All queue state lives in a single table `lapinq_tasks`:
 | `module_path` | `TEXT` | — | Python module to import |
 | `args` | `JSONB` | `[]` | Positional arguments |
 | `kwargs` | `JSONB` | `{}` | Keyword arguments |
-| `status` | `TEXT` | `pending` | One of: `pending`, `running`, `completed`, `failed` |
+| `status` | `TEXT` | `pending` | One of: `pending`, `running`, `completed`, `failed`, `cancelled`, `expired` |
 | `result` | `TEXT` | — | Serialized return value (completed tasks) |
 | `error` | `TEXT` | — | Error message (failed tasks) |
 | `attempts` | `INT` | `0` | Number of execution attempts |
 | `max_retries` | `INT` | `3` | Max retries before marking as failed |
 | `priority` | `INT` | `0` | Higher values claim first |
+| `metadata` | `JSONB` | `{}` | Arbitrary key-value pairs |
+| `progress` | `INT` | `0` | Progress percentage (0–100) |
+| `retry_delay` | `FLOAT` | — | Fixed delay between retries (seconds) |
+| `retry_backoff` | `BOOLEAN` | `true` | Exponential backoff |
+| `webhook_url` | `TEXT` | — | URL called on completion/failure |
 | `created_at` | `TIMESTAMPTZ` | `now()` | Creation timestamp |
 | `scheduled_at` | `TIMESTAMPTZ` | `now()` | Earliest allowed claim time |
 | `started_at` | `TIMESTAMPTZ` | — | When a worker claimed the task |

@@ -138,5 +138,5 @@ LAPINQ_RATE_LIMIT=60 python -m lapinq server
 - Dashboard at `http://localhost:8001`
 - Health check: `GET /health`
 - Prometheus metrics: `GET /metrics`
-- Queue stats: `GET /api/queues`
-- DLQ (Dead Letter Queue): `GET /api/tasks/failed`
+- Queue stats: `GET /api/v1/queues`
+- DLQ (Dead Letter Queue): `GET /api/v1/tasks/failed`

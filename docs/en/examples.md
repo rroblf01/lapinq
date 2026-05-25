@@ -56,19 +56,19 @@ app = FastAPI(title="Lapinq + FastAPI Demo")
 @app.post("/square/{n}")
 async def enqueue_square(n: int):
     """Enqueue a slow square calculation."""
-    resp = await slow_square.aqueue(n)
-    if resp.status_code != 201:
-        raise HTTPException(status_code=resp.status_code, detail=resp.json())
-    return resp.json()
+    ref = await slow_square.aqueue(n)
+    if ref.status_code != 201:
+        raise HTTPException(status_code=ref.status_code, detail=ref.json())
+    return ref.json()
 
 
 @app.post("/echo")
 async def enqueue_echo(msg: str = "hello"):
     """Enqueue an async echo task."""
-    resp = await echo_message.aqueue(msg)
-    if resp.status_code != 201:
-        raise HTTPException(status_code=resp.status_code, detail=resp.json())
-    return resp.json()
+    ref = await echo_message.aqueue(msg)
+    if ref.status_code != 201:
+        raise HTTPException(status_code=ref.status_code, detail=ref.json())
+    return ref.json()
 
 
 @app.get("/task/{task_id}")
@@ -173,14 +173,14 @@ from .tasks import add, hello
 
 def enqueue_add(request, a, b):
     """Enqueue an add task."""
-    resp = add.queue(a, b)
-    return JsonResponse(resp.json())
+    ref = add.queue(a, b)
+    return JsonResponse(ref.json())
 
 
 def enqueue_hello(request, name):
     """Enqueue a hello task."""
-    resp = hello.queue(name, greeting="Hi")
-    return JsonResponse(resp.json())
+    ref = hello.queue(name, greeting="Hi")
+    return JsonResponse(ref.json())
 
 
 def task_status(request, task_id):
@@ -263,9 +263,9 @@ def greet(name: str) -> str:
     return f"Hello, {name}!"
 
 
-# Enqueue a task. The function also works normally:
-result = greet.queue("World")
-task_id = result.json()["task_id"]
+# Enqueue a task. Returns a TaskRef:
+ref = greet.queue("World")
+print(ref.task_id)
 ```
 
 For async code:

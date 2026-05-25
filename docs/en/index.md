@@ -29,9 +29,10 @@ tasks = TaskQueue(server_url="http://localhost:8001", queue_name="video")
 def process_video(video_id: int, codec: str):
     print(f"Processing video {video_id} with {codec}")
 
-# Enqueue the task — sends HTTP POST to the server
-response = process_video.queue(1, codec="h264")
-task_id = response.json()["task_id"]
+# Enqueue the task — returns a TaskRef
+ref = process_video.queue(1, codec="h264")
+print(ref.task_id)  # "uuid-..."
+print(ref.wait(timeout=30))  # poll for result
 ```
 
 ## Architecture
