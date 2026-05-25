@@ -163,7 +163,7 @@ async def test_heartbeat_error_does_not_crash_loop(monkeypatch):
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("broken")
-            return await original(smod.Storage, *a[1:], **kw)
+            return await original(storage, *a, **kw)
 
         monkeypatch.setattr(smod.Storage, "heartbeat", broken_heartbeat)
 

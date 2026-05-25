@@ -4,6 +4,7 @@ import asyncio
 import uuid
 
 import httpx
+import pytest
 from lapinq.server import create_app
 from lapinq.storage import Storage
 
@@ -537,6 +538,7 @@ async def test_create_app_with_worker_flag():
     assert app is not None
 
 
+@pytest.mark.slow
 async def test_inline_worker_processes_through_server():
     from starlette.testclient import TestClient
 

@@ -681,6 +681,7 @@ def test_retry_exception_custom():
 # Integration: inline worker processes task with progress
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 async def test_inline_worker_with_metadata_and_progress():
     import asyncio
 
@@ -722,6 +723,7 @@ async def test_inline_worker_with_metadata_and_progress():
 # Integration: batch enqueue end-to-end
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 async def test_batch_enqueue_e2e():
     import asyncio
 
@@ -758,6 +760,7 @@ async def test_batch_enqueue_e2e():
 # Integration: inline worker with retry_delay
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 async def test_inline_worker_retry_delay():
     import asyncio
 

@@ -102,7 +102,9 @@ jobs:
       - name: Install wheel
         run: uv pip install dist/*.whl --reinstall
       - name: Run tests
-        run: uv run pytest tests/ -v -m "not slow" -n auto
+        run: uv run pytest tests/test_client.py tests/test_cli.py tests/test_log.py -v -n auto
+      - name: Run DB tests
+        run: uv run pytest tests/ -v -m "not slow" --ignore=tests/test_client.py --ignore=tests/test_cli.py --ignore=tests/test_log.py
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
 
@@ -148,7 +150,7 @@ jobs:
       - name: Build Rust binary
         run: cargo build
       - name: Run slow tests
-        run: uv run pytest tests/ -v -m "slow" -n auto
+        run: uv run pytest tests/ -v -m "slow"
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
 
@@ -181,7 +183,9 @@ jobs:
       - name: Install wheel
         run: uv pip install dist/*.whl --reinstall
       - name: Run tests
-        run: uv run pytest tests/ -v -m "not slow" -n auto
+        run: uv run pytest tests/test_client.py tests/test_cli.py tests/test_log.py -v -n auto
+      - name: Run DB tests
+        run: uv run pytest tests/ -v -m "not slow" --ignore=tests/test_client.py --ignore=tests/test_cli.py --ignore=tests/test_log.py
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
 
@@ -214,7 +218,9 @@ jobs:
       - name: Install wheel
         run: uv pip install --find-links dist lapinq --reinstall
       - name: Run tests
-        run: uv run pytest tests/ -v -m "not slow" -n auto
+        run: uv run pytest tests/test_client.py tests/test_cli.py tests/test_log.py -v -n auto
+      - name: Run DB tests
+        run: uv run pytest tests/ -v -m "not slow" --ignore=tests/test_client.py --ignore=tests/test_cli.py --ignore=tests/test_log.py
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
 
@@ -256,7 +262,7 @@ jobs:
       - name: Install wheel
         run: uv pip install dist/*.whl --reinstall
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v -m "not slow" --cov --cov-report=xml -n auto
+        run: uv run pytest tests/ -v -m "not slow" --cov --cov-report=xml
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
       - name: Upload coverage to Codecov
