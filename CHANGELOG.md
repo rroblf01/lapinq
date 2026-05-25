@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0] - 2026-05-25
+
+### Added
+- Task metadata — arbitrary JSONB key-value pairs per task, visible in dashboard
+- Task progress tracking — worker can update progress (0–100%) and message via `PATCH /api/v1/tasks/{id}/progress`
+- Batch enqueue — `POST /api/v1/enqueue/batch` for bulk task creation (up to 1000 tasks)
+- Configurable retry policies — `retry_delay` (fixed delay) and `retry_backoff` (exponential, default) per task
+- Default TTL — `default_ttl_seconds` on `TaskQueue`/`AsyncTaskQueue` applied when no explicit `ttl_seconds`
+- Webhook callbacks — `webhook_url` per task; worker fires POST on completion/failure
+- `TaskRef` client wrapper — `.task_id`, `.wait(timeout)`, `.awaitait(timeout)` for result polling
+- Manual retry — raise `lapinq.Retry(countdown=N)` inside a task function to retry with custom delay
+- CLI task management — `lapinq task list|get|cancel|requeue` with `--json` output
+- Cron-based periodic scheduler — `lapinq server --scheduler` with 5-field cron expressions
+- New `lapinq_scheduled_tasks` table for defining recurring task schedules
+
+### Changed
+- `.queue()` and `.aqueue()` now return a `TaskRef` object (backward-compatible with `.json()` and `.status_code`)
+
 ## [1.0.0] - 2026-05-23
 
 ### Added

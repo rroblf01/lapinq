@@ -31,7 +31,12 @@ def procesar_video(video_id: int, codec: str):
 
 # Enqueue the task — runs on the worker
 # Use .queue() for sync clients or .aqueue() for async clients
-procesar_video.queue(video_id=1, codec="h264")
+ref = procesar_video.queue(video_id=1, codec="h264")
+print(f"Task ID: {ref.task_id}")
+
+# Optional: wait for result (polling)
+result = ref.wait(timeout=30)
+print(result["status"], result.get("result"))
 ```
 
 ## Installation
@@ -113,13 +118,23 @@ Visit **http://localhost:8001/dashboard** to monitor queues and tasks in real ti
 | Rust worker (high performance) | ✅ |
 | Configurable concurrency | ✅ |
 | Task timeout | ✅ |
-| Task cancellation | ✅ |
+| Task cancellation & requeue | ✅ |
 | Multiple queues | ✅ |
 | CORS support | ✅ |
 | Graceful shutdown | ✅ |
 | Docker Compose | ✅ |
 | GitHub Actions CI/CD | ✅ |
 | MkDocs documentation | ✅ |
+| Task metadata / tags | ✅ |
+| Task progress tracking | ✅ |
+| Batch enqueue | ✅ |
+| Configurable retry policies | ✅ |
+| Default TTL per queue | ✅ |
+| Webhook callbacks | ✅ |
+| `TaskRef` — awaitable results | ✅ |
+| Manual retry (`Retry` exception) | ✅ |
+| CLI task management | ✅ |
+| Cron-based periodic scheduler | ✅ |
 
 ## Documentation
 
@@ -144,9 +159,9 @@ uv run maturin develop
 uv run pytest
 ```
 
-## Roadmap — v1.0.0
+## Roadmap
 
-### ✅ Complete (v0.1.0)
+### ✅ Complete
 - `@tasks.task()` decorator API, PostgreSQL queue, REST API, WebSocket dashboard
 - Python + Rust workers, configurable concurrency, task timeout, cancellation
 - Multiple queues, CORS, graceful shutdown, Docker Compose, CI/CD
@@ -154,36 +169,20 @@ uv run pytest
 - Priority queues, async client, Dead Letter Queue, worker heartbeat
 - Auth (API key), rate limiting, Prometheus metrics, structured logging
 - PyPI package, i18n docs (EN + ES), TTL support, Rust executor (PyO3)
+- Task metadata / tags, progress tracking, batch enqueue
+- Configurable retry policies, default TTL per queue, webhook callbacks
+- TaskRef (awaitable results), manual Retry exception
+- CLI task management (`lapinq task list|get|cancel|requeue`)
+- Cron-based periodic scheduler (`lapinq server --scheduler`)
+- Schema migrations, CHANGELOG.md, `abi3` wheels
 
-### 🔵 Phase 1 — Production hardening (current)
-- [ ] **Rust worker: graceful shutdown** — signal handlers for SIGTERM/SIGINT
-- [ ] **Rust worker: connection pool** — replace single `Client` with `deadpool-postgres`
-- [ ] **Rust worker: heartbeat** — periodic `last_heartbeat` updates
-- [ ] **Rust worker: integration tests** — test against real PostgreSQL
-- [ ] **WebSocket error logging** — replace bare `except: pass` with logging
-- [ ] **Request body validation** — catch malformed JSON in `enqueue` endpoint
-- [ ] **CI: Python version matrix** — test 3.10–3.14 on Linux, 3.14 on Win/Mac
-- [ ] **CI: security scanning** — add `bandit` / `trivy`
-- [ ] **Configurable constants** — `MAX_PAYLOAD_SIZE`, `HEARTBEAT_INTERVAL`, pool size via env
-- [ ] **CORS configurable** — `allow_origins` via env var
-
-### 🟡 Phase 2 — v1.0.0 release
-- [ ] **Schema migrations** — versioned migration strategy
-- [ ] **CHANGELOG.md** — release history
-- [ ] **CONTRIBUTING.md** — development guide
-- [ ] **`abi3` wheels** — single wheel for all Python 3.x versions
-- [ ] **Code coverage in CI** — upload to Codecov
-- [ ] **Validated query params** — safe `limit` parsing
-- [ ] **Rust error types** — `Box<dyn Error>` over raw `String`
-- [ ] **Tag v1.0.0** — publish to PyPI + GitHub Pages
-
-### 🟢 Future (post v1.0.0)
-- Recurring/cron tasks
+### 🟢 Future
 - Task chaining / workflows (`chain`, `group`, `chord`)
 - Distributed rate limiting (Redis-backed)
 - OpenTelemetry tracing
-- AsyncResult / task result retrieval
 - Pre/post task middleware hooks
+- CONTRIBUTING.md — development guide
+- Code coverage in CI — upload to Codecov
 
 ---
 
