@@ -282,7 +282,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 #[pyfunction]
-fn execute_task_inline(py: Python, task_data: &Bound<'_, PyAny>) -> PyResult<String> {
+fn execute_task_inline<'py>(py: Python<'py>, task_data: &Bound<'py, PyAny>) -> PyResult<String> {
     let module_path: String = task_data.get_item("module_path")?.extract()?;
     let task_name: String = task_data.get_item("task_name")?.extract()?;
 
@@ -301,11 +301,11 @@ fn execute_task_inline(py: Python, task_data: &Bound<'_, PyAny>) -> PyResult<Str
     }
 
     let args_list = task_data.get_item("args")?;
-    let args_vec: Vec<PyObject> = args_list.extract()?;
+    let args_vec: Vec<Bound<'py, PyAny>> = args_list.extract()?;
     let args_tuple = pyo3::types::PyTuple::new(py, &args_vec)?;
 
     let kwargs_bound = task_data.get_item("kwargs")?;
-    let kwargs_dict = kwargs_bound.downcast::<PyDict>()?;
+    let kwargs_dict = kwargs_bound.cast::<PyDict>()?;
 
     let result = func.call(args_tuple, Some(kwargs_dict))?;
 
