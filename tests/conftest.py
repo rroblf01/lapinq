@@ -20,7 +20,11 @@ def _postgres_container():
 
             conn = await asyncpg.connect(DATABASE_URL)
             try:
-                await conn.execute(SQL_SCHEMA)
+                async with conn.transaction():
+                    await conn.execute("SELECT pg_advisory_xact_lock(hashtext('lapinq_schema_init'))")
+                    await conn.execute(SQL_SCHEMA)
+            except asyncpg.UniqueViolationError:
+                pass
             finally:
                 await conn.close()
 
@@ -41,7 +45,11 @@ def _postgres_container():
 
             conn = await asyncpg.connect(DATABASE_URL)
             try:
-                await conn.execute(SQL_SCHEMA)
+                async with conn.transaction():
+                    await conn.execute("SELECT pg_advisory_xact_lock(hashtext('lapinq_schema_init'))")
+                    await conn.execute(SQL_SCHEMA)
+            except asyncpg.UniqueViolationError:
+                pass
             finally:
                 await conn.close()
 
