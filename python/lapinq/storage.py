@@ -595,7 +595,6 @@ class Storage:
 
 
 async def _apply_migrations(conn: asyncpg.Connection) -> None:
-    await conn.execute("SELECT pg_advisory_xact_lock(hashtext('lapinq_migrations'))")
     await conn.execute(
         "CREATE TABLE IF NOT EXISTS lapinq_schema_version (version INT PRIMARY KEY)"
     )

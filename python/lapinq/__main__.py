@@ -13,7 +13,7 @@ from lapinq.log import configure_logging
 configure_logging()
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lapinq")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -47,6 +47,11 @@ def main() -> None:
     _add_task_cancel_parser(task_sub)
     _add_task_requeue_parser(task_sub)
 
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.command == "server":

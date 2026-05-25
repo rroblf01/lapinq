@@ -79,16 +79,10 @@ def test_task_requeue_parser():
 
 
 def test_server_parser():
-    """Just check that argparse doesn't blow up for the server subcommand."""
-    import sys
+    from lapinq.__main__ import build_parser
 
-    from lapinq.__main__ import main
-
-    test_args = ["lapinq", "server", "--port", "9999", "--log-level", "debug"]
-    try:
-        sys.argv = test_args
-        main()
-    except SystemExit:
-        pass
-    except Exception:
-        pass
+    parser = build_parser()
+    args = parser.parse_args(["server", "--port", "9999", "--log-level", "debug"])
+    assert args.command == "server"
+    assert args.port == 9999
+    assert args.log_level == "debug"
