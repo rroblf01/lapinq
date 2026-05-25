@@ -103,6 +103,8 @@ jobs:
         run: uv pip install dist/*.whl --reinstall
       - name: Run tests
         run: uv run pytest tests/test_client.py tests/test_cli.py tests/test_log.py -v -n auto
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
       - name: Run DB tests
         run: uv run pytest tests/ -v -m "not slow" --ignore=tests/test_client.py --ignore=tests/test_cli.py --ignore=tests/test_log.py
         env:
@@ -184,6 +186,8 @@ jobs:
         run: uv pip install dist/*.whl --reinstall
       - name: Run tests
         run: uv run pytest tests/test_client.py tests/test_cli.py tests/test_log.py -v -n auto
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
       - name: Run DB tests
         run: uv run pytest tests/ -v -m "not slow" --ignore=tests/test_client.py --ignore=tests/test_cli.py --ignore=tests/test_log.py
         env:
@@ -219,6 +223,8 @@ jobs:
         run: uv pip install --find-links dist lapinq --reinstall
       - name: Run tests
         run: uv run pytest tests/test_client.py tests/test_cli.py tests/test_log.py -v -n auto
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/lapinq_test
       - name: Run DB tests
         run: uv run pytest tests/ -v -m "not slow" --ignore=tests/test_client.py --ignore=tests/test_cli.py --ignore=tests/test_log.py
         env:
