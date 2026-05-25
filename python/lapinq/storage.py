@@ -109,6 +109,7 @@ class Storage:
         pool_size = max_size + 1
         last_error: Exception | None = None
         for attempt in range(max_retries):
+            pool: asyncpg.Pool | None = None
             try:
                 pool = await asyncpg.create_pool(database_url, min_size=1, max_size=pool_size)
                 async with pool.acquire() as conn:
@@ -118,6 +119,8 @@ class Storage:
                 return cls(pool, database_url=database_url)
             except Exception as e:
                 last_error = e
+                if pool is not None:
+                    await pool.close()
                 if attempt < max_retries - 1:
                     delay = (attempt + 1) * 2
                     logger.warning(
@@ -592,6 +595,7 @@ class Storage:
 
 
 async def _apply_migrations(conn: asyncpg.Connection) -> None:
+    await conn.execute("SELECT pg_advisory_xact_lock(hashtext('lapinq_migrations'))")
     await conn.execute(
         "CREATE TABLE IF NOT EXISTS lapinq_schema_version (version INT PRIMARY KEY)"
     )
@@ -606,7 +610,10 @@ async def _apply_migrations(conn: asyncpg.Connection) -> None:
         version = i + 1
         if version > current:
             await conn.execute(migration_sql)
-            await conn.execute("UPDATE lapinq_schema_version SET version = $1", version)
+            await conn.execute(
+                "INSERT INTO lapinq_schema_version (version) VALUES ($1) ON CONFLICT DO NOTHING",
+                version,
+            )
             logger.info("Applied schema migration v%d", version)
 
 
