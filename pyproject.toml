@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "lapinq"
-version = "1.0.0"
+version = "1.2.0"
 description = "A lightweight task queue with PostgreSQL backend"
 readme = "README.md"
 authors = [
