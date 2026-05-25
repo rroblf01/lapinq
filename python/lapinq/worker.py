@@ -63,8 +63,9 @@ async def _worker_loop(
                     await storage.complete_task(task_id)
                 if webhook_url:
                     from lapinq.execute import _fire_webhook
+                    hook_result = json.dumps(result) if result is not None else None
                     asyncio.ensure_future(
-                        _fire_webhook(webhook_url, task_id, "completed", result=json.dumps(result) if result is not None else None)
+                        _fire_webhook(webhook_url, task_id, "completed", result=hook_result)
                     )
             except TimeoutError:
                 logger.warning("Task %s timed out after %ds", task_id, task_timeout)

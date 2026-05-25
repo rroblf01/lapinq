@@ -310,6 +310,7 @@ async def test_requeue_flow():
         await storage.fail_task(UUID(task_id), error="intentional failure")
 
         task = await storage.get_task(UUID(task_id))
+        assert task is not None
         assert task["status"] == "failed"
 
         # Requeue
@@ -318,6 +319,7 @@ async def test_requeue_flow():
         assert resp2.json()["status"] == "requeued"
 
         task2 = await storage.get_task(UUID(task_id))
+        assert task2 is not None
         assert task2["status"] == "pending"
         logger.info("✓ Requeue flow: task %s requeued successfully", task_id)
 

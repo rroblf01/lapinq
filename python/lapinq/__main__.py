@@ -62,7 +62,8 @@ def main() -> None:
 def _add_task_list_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("list", help="List tasks")
     p.add_argument("--queue", "-q", default=None, help="Filter by queue name")
-    p.add_argument("--status", "-s", default=None, choices=["pending", "running", "completed", "failed", "cancelled", "expired"], help="Filter by status")
+    status_choices = ["pending", "running", "completed", "failed", "cancelled", "expired"]
+    p.add_argument("--status", "-s", default=None, choices=status_choices, help="Filter by status")
     p.add_argument("--limit", "-l", type=int, default=20, help="Max results")
     p.add_argument("--database-url", default=None, help="PostgreSQL connection URL")
     p.add_argument("--json", "-j", action="store_true", help="Output as JSON")

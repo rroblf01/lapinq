@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
 from unittest import mock
 
 import httpx
 import pytest
 from lapinq.client import AsyncTaskQueue, TaskQueue, TaskRef
-from lapinq.execute import Retry
+from lapinq.execute import RetryError
 from lapinq.server import create_app
 from lapinq.storage import Storage
 
@@ -310,7 +309,14 @@ def test_taskref_wait_completed():
 
         with mock.patch("lapinq.client.httpx.get") as mock_get:
             mock_get.return_value = httpx.Response(
-                200, json={"id": "abc-123", "status": "completed", "result": '"done"', "error": None, "completed_at": "2026-01-01T00:00:00"},
+                200,
+                json={
+                    "id": "abc-123",
+                    "status": "completed",
+                    "result": '"done"',
+                    "error": None,
+                    "completed_at": "2026-01-01T00:00:00",
+                },
             )
             result = ref.wait(timeout=5)
             assert result["status"] == "completed"
@@ -372,7 +378,16 @@ async def test_async_taskref_awaitait():
             assert ref.task_id == "async-123"
 
             with mock.patch("lapinq.client.httpx.AsyncClient.get") as mock_get:
-                mock_resp = httpx.Response(200, json={"id": "async-123", "status": "completed", "result": '"done"', "error": None, "completed_at": "2026-01-01T00:00:00"})
+                mock_resp = httpx.Response(
+                    200,
+                    json={
+                        "id": "async-123",
+                        "status": "completed",
+                        "result": '"done"',
+                        "error": None,
+                        "completed_at": "2026-01-01T00:00:00",
+                    },
+                )
                 mock_get.return_value = mock_resp
 
                 result = await ref.awaitait(timeout=5)
@@ -650,14 +665,14 @@ async def test_server_enqueue_with_webhook():
 # ---------------------------------------------------------------------------
 
 def test_retry_exception_default():
-    r = Retry()
+    r = RetryError()
     assert r.countdown == 10
     assert r.message is None
     assert str(r) == "Retry in 10s"
 
 
 def test_retry_exception_custom():
-    r = Retry(countdown=60, message="rate limited")
+    r = RetryError(countdown=60, message="rate limited")
     assert r.countdown == 60
     assert r.message == "rate limited"
 
@@ -667,11 +682,11 @@ def test_retry_exception_custom():
 # ---------------------------------------------------------------------------
 
 async def test_inline_worker_with_metadata_and_progress():
-    from starlette.testclient import TestClient
     import asyncio
 
     # Register a task with metadata and external progress update
     from lapinq.client import TaskQueue
+    from starlette.testclient import TestClient
     tq = TaskQueue(server_url="http://test:8001")
 
     @tq.task(name="prog_demo")
@@ -708,14 +723,23 @@ async def test_inline_worker_with_metadata_and_progress():
 # ---------------------------------------------------------------------------
 
 async def test_batch_enqueue_e2e():
-    from starlette.testclient import TestClient
     import asyncio
+
+    from starlette.testclient import TestClient
 
     app = create_app(database_url=DATABASE_URL, worker=True, worker_poll_interval=0.05)
     with TestClient(app) as client:
         tasks = [
-            {"task_name": "add", "queue_name": "batch_e2e", "module_path": "tests.test_execute", "args": [1, 2], "max_retries": 0},
-            {"task_name": "add", "queue_name": "batch_e2e", "module_path": "tests.test_execute", "args": [3, 4], "max_retries": 0},
+            {
+                "task_name": "add", "queue_name": "batch_e2e",
+                "module_path": "tests.test_execute",
+                "args": [1, 2], "max_retries": 0,
+            },
+            {
+                "task_name": "add", "queue_name": "batch_e2e",
+                "module_path": "tests.test_execute",
+                "args": [3, 4], "max_retries": 0,
+            },
         ]
         resp = client.post("/api/v1/enqueue/batch", json=tasks)
         assert resp.status_code == 201
@@ -735,8 +759,9 @@ async def test_batch_enqueue_e2e():
 # ---------------------------------------------------------------------------
 
 async def test_inline_worker_retry_delay():
-    from starlette.testclient import TestClient
     import asyncio
+
+    from starlette.testclient import TestClient
 
     app = create_app(database_url=DATABASE_URL, worker=True, worker_poll_interval=0.05)
     with TestClient(app) as client:
@@ -775,15 +800,17 @@ def fail_always() -> int:
 
 class TestCronParsing:
     def test_cron_every_minute(self):
-        from lapinq.scheduler import _parse_cron, _should_run
         from datetime import datetime, timezone
+
+        from lapinq.scheduler import _parse_cron, _should_run
         cron = _parse_cron("* * * * *")
         dt = datetime(2026, 5, 25, 10, 30, tzinfo=timezone.utc)
         assert _should_run(cron, dt)
 
     def test_cron_specific_hour(self):
-        from lapinq.scheduler import _parse_cron, _should_run
         from datetime import datetime, timezone
+
+        from lapinq.scheduler import _parse_cron, _should_run
         cron = _parse_cron("0 14 * * *")
         dt = datetime(2026, 5, 25, 14, 0, tzinfo=timezone.utc)
         assert _should_run(cron, dt)
@@ -791,8 +818,9 @@ class TestCronParsing:
         assert not _should_run(cron, dt2)
 
     def test_cron_range(self):
-        from lapinq.scheduler import _parse_cron, _should_run
         from datetime import datetime, timezone
+
+        from lapinq.scheduler import _parse_cron, _should_run
         cron = _parse_cron("30 9-17 * * 1-5")
         dt = datetime(2026, 5, 25, 9, 30, tzinfo=timezone.utc)  # Monday
         assert _should_run(cron, dt)
@@ -800,8 +828,9 @@ class TestCronParsing:
         assert not _should_run(cron, dt2)
 
     def test_cron_step(self):
-        from lapinq.scheduler import _parse_cron, _should_run
         from datetime import datetime, timezone
+
+        from lapinq.scheduler import _parse_cron, _should_run
         cron = _parse_cron("*/15 * * * *")
         dt = datetime(2026, 5, 25, 10, 0, tzinfo=timezone.utc)
         assert _should_run(cron, dt)
@@ -811,8 +840,9 @@ class TestCronParsing:
         assert _should_run(cron, dt3)
 
     def test_cron_list(self):
-        from lapinq.scheduler import _parse_cron, _should_run
         from datetime import datetime, timezone
+
+        from lapinq.scheduler import _parse_cron, _should_run
         cron = _parse_cron("0,30 * * * *")
         dt = datetime(2026, 5, 25, 10, 0, tzinfo=timezone.utc)
         assert _should_run(cron, dt)
@@ -822,8 +852,8 @@ class TestCronParsing:
         assert _should_run(cron, dt3)
 
     def test_cron_invalid(self):
-        from lapinq.scheduler import _parse_cron
         import pytest
+        from lapinq.scheduler import _parse_cron
         with pytest.raises(ValueError, match="expected 5 fields"):
             _parse_cron("invalid")
 
@@ -837,8 +867,9 @@ class TestCronParsing:
         assert weekdays == {0}
 
     def test_cron_weekday_mapping(self):
-        from lapinq.scheduler import _parse_cron, _should_run
         from datetime import datetime, timezone
+
+        from lapinq.scheduler import _parse_cron, _should_run
         # Cron "0" = Sunday, Python "6" = Sunday
         cron = _parse_cron("* * * * 0")
         dt = datetime(2026, 5, 31, 10, 0, tzinfo=timezone.utc)  # Sunday

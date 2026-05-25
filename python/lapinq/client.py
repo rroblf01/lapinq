@@ -191,7 +191,10 @@ class TaskQueue:
             return self._register(name, None, self.queue_name, None, None, 0, None, None, None, None, None)
 
         def decorator(func: Any) -> Any:
-            return self._register(func, name, queue_name, scheduled_at, max_retries, priority, ttl_seconds, metadata, retry_delay, retry_backoff, webhook_url)
+            return self._register(
+                func, name, queue_name, scheduled_at, max_retries, priority,
+                ttl_seconds, metadata, retry_delay, retry_backoff, webhook_url,
+            )
 
         return decorator
 
@@ -283,7 +286,10 @@ class AsyncTaskQueue:
             return self._register(name, None, self.queue_name, None, None, 0, None, None, None, None, None)
 
         def decorator(func: Any) -> Any:
-            return self._register(func, name, queue_name, scheduled_at, max_retries, priority, ttl_seconds, metadata, retry_delay, retry_backoff, webhook_url)
+            return self._register(
+                func, name, queue_name, scheduled_at, max_retries, priority,
+                ttl_seconds, metadata, retry_delay, retry_backoff, webhook_url,
+            )
 
         return decorator
 

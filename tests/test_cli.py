@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import uuid
 
-from lapinq.__main__ import _add_task_list_parser, _add_task_get_parser, _add_task_cancel_parser, _add_task_requeue_parser
+from lapinq.__main__ import _add_task_cancel_parser, _add_task_get_parser, _add_task_list_parser, _add_task_requeue_parser
 
 
 def _make_task_parser() -> argparse.ArgumentParser:
@@ -80,8 +80,9 @@ def test_task_requeue_parser():
 
 def test_server_parser():
     """Just check that argparse doesn't blow up for the server subcommand."""
-    from lapinq.__main__ import main
     import sys
+
+    from lapinq.__main__ import main
 
     test_args = ["lapinq", "server", "--port", "9999", "--log-level", "debug"]
     try:

@@ -301,8 +301,7 @@ async def test_rust_worker_binary_processes_task():
         if task is None:
             task = await storage.get_task(task_id)
             try:
-                async with asyncio.timeout(2):
-                    stdout, stderr = await proc.communicate()
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=2)
             except (asyncio.TimeoutError, TimeoutError):
                 proc.kill()
                 stdout, stderr = await proc.communicate()

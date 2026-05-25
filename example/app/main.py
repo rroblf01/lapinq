@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
@@ -10,11 +11,19 @@ from lapinq.client import AsyncTaskQueue
 
 logger = logging.getLogger("lapinq.example")
 
-app = FastAPI(title="Lapinq Example")
-
 server_url = os.environ.get("LAPINQ_SERVER_URL", "http://lapinq-server:8001")
 queue = AsyncTaskQueue(server_url=server_url, queue_name="example")
 api_client = httpx.AsyncClient(base_url=server_url)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await queue.close()
+    await api_client.aclose()
+
+
+app = FastAPI(title="Lapinq Example", lifespan=lifespan)
 
 
 @queue.task
@@ -23,12 +32,6 @@ async def send_email(recipient: str, subject: str, body: str) -> str:
     await asyncio.sleep(5)  # Simulate email sending delay
     logger.info("Email sent to %s", recipient)
     return f"sent to {recipient}: {subject}"
-
-
-@app.on_event("shutdown")
-async def shutdown() -> None:
-    await queue.close()
-    await api_client.aclose()
 
 
 @app.post("/send-email")

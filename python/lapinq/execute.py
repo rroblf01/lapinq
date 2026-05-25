@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import inspect
-import json
 import logging
 import os
 import sys
@@ -24,7 +23,7 @@ except ImportError:
     logger.debug("Rust task executor not available, using Python")
 
 
-class Retry(Exception):
+class RetryError(Exception):
     """Raise this inside a task function to trigger a retry with optional countdown delay."""
 
     def __init__(self, countdown: float = 10, message: str | None = None):
@@ -71,8 +70,8 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
     if inspect.iscoroutinefunction(func):
         try:
             return await func(*args, **kwargs)
-        except Retry as r:
-            raise r
+        except RetryError:
+            raise
     else:
         if _execute_rust is not None:
             try:
@@ -83,7 +82,7 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
                 return json.loads(raw)
             except TypeError as e:
                 logger.debug("Rust executor rejected task %s: %s", task_name, e)
-            except Retry:
+            except RetryError:
                 raise
             except Exception as e:
                 logger.warning("Rust executor failed for %s, falling back to Python: %s", task_name, e)
@@ -91,7 +90,7 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
         loop = asyncio.get_running_loop()
         try:
             return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
-        except Retry:
+        except RetryError:
             raise
 
 
@@ -128,7 +127,7 @@ async def execute_task(task_id: str) -> None:
             result = func(*args, **kwargs)
         print(result, flush=True)
         logger.info("Task %s completed: %s", task_id, result)
-    except Retry as r:
+    except RetryError as r:
         countdown = r.countdown
         await conn.execute(
             """

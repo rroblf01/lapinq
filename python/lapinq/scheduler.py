@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS lapinq_scheduled_tasks (
 
 
 def _parse_cron(cron: str) -> tuple[set[int], set[int], set[int], set[int], set[int]]:
+    # ty: disable=invalid-return-type
     """Parse a cron expression into sets of minute, hour, day-of-month, month, day-of-week.
 
     Supports: * (all), N (specific), N-M (range), N,M (list), */N (step).
@@ -43,7 +44,6 @@ def _parse_cron(cron: str) -> tuple[set[int], set[int], set[int], set[int], set[
     if len(parts) != 5:
         raise ValueError(f"Invalid cron expression {cron!r}: expected 5 fields, got {len(parts)}")
 
-    field_names = ["minute", "hour", "day of month", "month", "day of week"]
     field_ranges = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)]
 
     result: list[set[int]] = []
@@ -79,12 +79,11 @@ def _parse_cron(cron: str) -> tuple[set[int], set[int], set[int], set[int], set[
         weekdays_py.add((w + 6) % 7)
     result[4] = weekdays_py
 
-    return tuple(result)  # type: ignore[return-value]
+    return tuple(result)  # type: ignore
 
 
 def _should_run(cron_sets: tuple[set[int], set[int], set[int], set[int], set[int]], dt: Any) -> bool:
     """Check if a datetime matches a parsed cron expression."""
-    from datetime import datetime
 
     minute = dt.minute
     hour = dt.hour
@@ -153,11 +152,11 @@ class Scheduler:
                 queue_name=task["queue_name"],
                 module_path=task["module_path"],
                 args=json.loads(task.get("args", "[]")) if isinstance(task.get("args"), str) else (task.get("args") or []),
-                kwargs=json.loads(task.get("kwargs", "{}")) if isinstance(task.get("kwargs"), str) else (task.get("kwargs") or {}),
+                kwargs=json.loads(task.get("kwargs", "{}")) if isinstance(task.get("kwargs"), str) else (task.get("kwargs") or {}),  # noqa: E501
                 max_retries=task.get("max_retries", 3),
                 priority=task.get("priority", 0),
                 ttl_seconds=task.get("ttl_seconds"),
-                metadata=json.loads(task.get("metadata", "{}")) if isinstance(task.get("metadata"), str) else (task.get("metadata") or {}),
+                metadata=json.loads(task.get("metadata", "{}")) if isinstance(task.get("metadata"), str) else (task.get("metadata") or {}),  # noqa: E501
                 retry_delay=task.get("retry_delay"),
                 retry_backoff=task.get("retry_backoff", True),
                 webhook_url=task.get("webhook_url"),
