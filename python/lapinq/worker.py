@@ -50,6 +50,7 @@ async def _worker_loop(
     async def process_task(task_data: dict) -> None:
         try:
             task_id = task_data["id"]
+            webhook_url = task_data.get("webhook_url")
             try:
                 result = await asyncio.wait_for(
                     execute_fn(task_data),
@@ -60,13 +61,28 @@ async def _worker_loop(
                     await storage.complete_task(task_id, result=json.dumps(result))
                 else:
                     await storage.complete_task(task_id)
+                if webhook_url:
+                    from lapinq.execute import _fire_webhook
+                    asyncio.ensure_future(
+                        _fire_webhook(webhook_url, task_id, "completed", result=json.dumps(result) if result is not None else None)
+                    )
             except TimeoutError:
                 logger.warning("Task %s timed out after %ds", task_id, task_timeout)
                 await storage.fail_task(task_id, error="timed out")
+                if webhook_url:
+                    from lapinq.execute import _fire_webhook
+                    asyncio.ensure_future(
+                        _fire_webhook(webhook_url, task_id, "failed", error="timed out")
+                    )
             except Exception as e:
                 logger.exception("Task %s failed: %s", task_id, e)
                 with contextlib.suppress(Exception):
                     await storage.fail_task(task_id, error=str(e))
+                if webhook_url:
+                    from lapinq.execute import _fire_webhook
+                    asyncio.ensure_future(
+                        _fire_webhook(webhook_url, task_id, "failed", error=str(e))
+                    )
         finally:
             semaphore.release()
 

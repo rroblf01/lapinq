@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import inspect
+import json
 import logging
 import os
 import sys
@@ -16,11 +17,42 @@ from lapinq.storage import json_loads
 logger = logging.getLogger("lapinq.execute")
 
 try:
-    from lapinq._worker import execute_task_inline as _execute_rust  # ty: ignore
+    from lapinq._worker import execute_task_inline as _execute_rust  # type: ignore
     logger.info("Rust task executor available")
 except ImportError:
     _execute_rust = None
     logger.debug("Rust task executor not available, using Python")
+
+
+class Retry(Exception):
+    """Raise this inside a task function to trigger a retry with optional countdown delay."""
+
+    def __init__(self, countdown: float = 10, message: str | None = None):
+        self.countdown = countdown
+        self.message = message
+        super().__init__(message or f"Retry in {countdown}s")
+
+
+async def _fire_webhook(
+    webhook_url: str,
+    task_id: uuid.UUID,
+    status: str,
+    result: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Fire a webhook callback for task completion/failure."""
+    try:
+        import httpx
+        payload = {
+            "task_id": str(task_id),
+            "status": status,
+            "result": result,
+            "error": error,
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(webhook_url, json=payload)
+    except Exception:
+        logger.exception("Webhook callback failed for task %s to %s", task_id, webhook_url)
 
 
 async def execute_task_inline(task_data: dict[str, Any]) -> Any:
@@ -37,23 +69,30 @@ async def execute_task_inline(task_data: dict[str, Any]) -> Any:
         raise ImportError(f"Function {task_name} not found in module {module_path}")
 
     if inspect.iscoroutinefunction(func):
-        return await func(*args, **kwargs)
-
-    if _execute_rust is not None:
         try:
-            import json
+            return await func(*args, **kwargs)
+        except Retry as r:
+            raise r
+    else:
+        if _execute_rust is not None:
+            try:
+                import json
+                _rust_fn = _execute_rust
+                loop = asyncio.get_running_loop()
+                raw = await loop.run_in_executor(None, lambda: _rust_fn(task_data))
+                return json.loads(raw)
+            except TypeError as e:
+                logger.debug("Rust executor rejected task %s: %s", task_name, e)
+            except Retry:
+                raise
+            except Exception as e:
+                logger.warning("Rust executor failed for %s, falling back to Python: %s", task_name, e)
 
-            _rust_fn = _execute_rust
-            loop = asyncio.get_running_loop()
-            raw = await loop.run_in_executor(None, lambda: _rust_fn(task_data))
-            return json.loads(raw)
-        except TypeError as e:
-            logger.debug("Rust executor rejected task %s: %s", task_name, e)
-        except Exception as e:
-            logger.warning("Rust executor failed for %s, falling back to Python: %s", task_name, e)
-
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+        loop = asyncio.get_running_loop()
+        try:
+            return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+        except Retry:
+            raise
 
 
 async def execute_task(task_id: str) -> None:
@@ -89,6 +128,25 @@ async def execute_task(task_id: str) -> None:
             result = func(*args, **kwargs)
         print(result, flush=True)
         logger.info("Task %s completed: %s", task_id, result)
+    except Retry as r:
+        countdown = r.countdown
+        await conn.execute(
+            """
+            UPDATE lapinq_tasks
+            SET status = 'pending',
+                attempts = attempts + 1,
+                error = $2,
+                scheduled_at = now() + ($3::text || ' seconds')::interval,
+                started_at = NULL,
+                worker_id = NULL
+            WHERE id = $1
+            """,
+            tid,
+            r.message or "manual retry",
+            str(countdown),
+        )
+        logger.info("Task %s manually retried in %ss", task_id, countdown)
+        sys.exit(0)
     except Exception as e:
         logger.exception("Task %s failed: %s", task_id, e)
         sys.exit(1)
