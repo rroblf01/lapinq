@@ -135,6 +135,8 @@ def create_app(
     cleanup_interval: float = 0,
     archive_max_age_days: float = 0,
     archive_interval: float = 86400,
+    scheduler: bool = False,
+    scheduler_interval: float = 60.0,
 ) -> Starlette:
     api_prefix = API_PREFIX
     dashboard_routes = [
@@ -145,6 +147,7 @@ def create_app(
     ]
     api_routes = [
         Route(f"{api_prefix}/enqueue", enqueue, methods=["POST"]),
+        Route(f"{api_prefix}/enqueue/batch", enqueue_batch, methods=["POST"]),
         Route(f"{api_prefix}/queues", queue_stats, methods=["GET"]),
         Route(f"{api_prefix}/tasks/html", tasks_html_endpoint, methods=["GET"]),
         Route(f"{api_prefix}/queues/html", queues_html_endpoint, methods=["GET"]),
@@ -154,6 +157,7 @@ def create_app(
         Route(f"{api_prefix}/tasks/{{task_id:str}}/result", get_task_result, methods=["GET"]),
         Route(f"{api_prefix}/tasks/{{task_id:str}}", cancel_task, methods=["DELETE"]),
         Route(f"{api_prefix}/tasks/{{task_id:str}}/requeue", requeue_task, methods=["POST"]),
+        Route(f"{api_prefix}/tasks/{{task_id:str}}/progress", update_progress_endpoint, methods=["PATCH"]),
     ]
 
     @asynccontextmanager
@@ -185,6 +189,11 @@ def create_app(
                     _archive_loop(storage, archive_max_age_days, archive_interval)
                 )
             )
+        scheduler_obj = None
+        if scheduler:
+            from lapinq.scheduler import Scheduler
+            scheduler_obj = Scheduler(storage, interval=scheduler_interval)
+            bg_tasks.append(asyncio.create_task(scheduler_obj._loop()))
         yield
         for t in bg_tasks:
             t.cancel()
@@ -244,11 +253,23 @@ async def enqueue(request: Request) -> JSONResponse:
     max_retries = body.get("max_retries", 3)
     priority = body.get("priority", 0)
     ttl_seconds = body.get("ttl_seconds")
+    metadata = body.get("metadata")
+    retry_delay = body.get("retry_delay")
+    retry_backoff = body.get("retry_backoff")
+    webhook_url = body.get("webhook_url")
+
     if ttl_seconds is not None:
         try:
             ttl_seconds = float(ttl_seconds)
         except (ValueError, TypeError):
             return JSONResponse({"error": "invalid ttl_seconds"}, status_code=400)
+    if metadata is not None and not isinstance(metadata, dict):
+        return JSONResponse({"error": "metadata must be a JSON object"}, status_code=400)
+    if retry_delay is not None:
+        try:
+            retry_delay = float(retry_delay)
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "invalid retry_delay"}, status_code=400)
 
     if not task_name:
         return JSONResponse({"error": "task_name is required"}, status_code=400)
@@ -273,10 +294,51 @@ async def enqueue(request: Request) -> JSONResponse:
         max_retries=max_retries,
         priority=priority,
         ttl_seconds=ttl_seconds,
+        metadata=metadata,
+        retry_delay=retry_delay,
+        retry_backoff=retry_backoff,
+        webhook_url=webhook_url,
     )
     if task_id is None:
         return JSONResponse({"task_id": None, "ttl_seconds": 0}, status_code=201)
     return JSONResponse({"task_id": str(task_id)}, status_code=201)
+
+
+async def enqueue_batch(request: Request) -> JSONResponse:
+    storage: Storage = request.app.state.storage
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    if not isinstance(body, list):
+        return JSONResponse({"error": "body must be a JSON array"}, status_code=400)
+    if len(body) > 1000:
+        return JSONResponse({"error": "batch limit is 1000 tasks"}, status_code=400)
+    for item in body:
+        if not item.get("task_name"):
+            return JSONResponse({"error": "each task must have a task_name"}, status_code=400)
+    ids = await storage.enqueue_batch(body)
+    return JSONResponse({"task_ids": [str(i) for i in ids], "count": len(ids)}, status_code=201)
+
+
+async def update_progress_endpoint(request: Request) -> JSONResponse:
+    storage: Storage = request.app.state.storage
+    task_id = _parse_uuid(request.path_params["task_id"])
+    if task_id is None:
+        return JSONResponse({"error": "invalid task id"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    progress = body.get("progress")
+    if progress is None or not isinstance(progress, (int, float)):
+        return JSONResponse({"error": "progress is required (0-100)"}, status_code=400)
+    progress = float(progress)
+    if progress < 0 or progress > 100:
+        return JSONResponse({"error": "progress must be between 0 and 100"}, status_code=400)
+    message = body.get("message")
+    await storage.update_progress(task_id, progress, message)
+    return JSONResponse({"status": "ok"})
 
 
 async def queue_stats(request: Request) -> JSONResponse:
@@ -549,6 +611,14 @@ def _serialize_task(task: dict[str, Any]) -> dict[str, Any]:
     result["ttl_remaining"] = _format_ttl(
         task.get("created_at"), task.get("ttl_seconds"),
     )
+    if "metadata" in result and isinstance(result["metadata"], str):
+        import json
+        try:
+            result["metadata"] = json.loads(result["metadata"])
+        except (json.JSONDecodeError, TypeError):
+            result["metadata"] = {}
+    if result.get("progress") is not None:
+        result["progress"] = float(result["progress"])
     return result
 
 

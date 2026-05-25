@@ -65,6 +65,14 @@ MIGRATIONS: list[str] = [
     ALTER TABLE lapinq_tasks ADD CONSTRAINT lapinq_tasks_status_check
         CHECK (status IN ('pending','running','completed','failed','cancelled','expired'));
     """,
+    """
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS progress DOUBLE PRECISION;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS progress_message TEXT;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS retry_delay DOUBLE PRECISION;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS retry_backoff BOOLEAN DEFAULT TRUE;
+    ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS webhook_url TEXT;
+    """,
 ]
 
 NOTIFY_SQL = """
@@ -123,7 +131,7 @@ class Storage:
         if row is None:
             return None
         result = dict(row)
-        for key in ("args", "kwargs"):
+        for key in ("args", "kwargs", "metadata"):
             if key in result and isinstance(result[key], str):
                 result[key] = json_loads(result[key])
         return result
@@ -159,6 +167,10 @@ class Storage:
         max_retries: int = 3,
         priority: int = 0,
         ttl_seconds: float | None = None,
+        metadata: dict[str, Any] | None = None,
+        retry_delay: float | None = None,
+        retry_backoff: bool | None = None,
+        webhook_url: str | None = None,
     ) -> uuid.UUID | None:
         if ttl_seconds == 0:
             return None
@@ -168,9 +180,11 @@ class Storage:
                     """
                     INSERT INTO lapinq_tasks
                         (task_name, queue_name, module_path, args, kwargs, status,
-                         scheduled_at, max_retries, priority, ttl_seconds)
+                         scheduled_at, max_retries, priority, ttl_seconds,
+                         metadata, retry_delay, retry_backoff, webhook_url)
                     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, 'pending',
-                            COALESCE($6::timestamptz, now()), $7, $8, $9)
+                            COALESCE($6::timestamptz, now()), $7, $8, $9,
+                            $10::jsonb, $11, $12, $13)
                     RETURNING id
                     """,
                     task_name,
@@ -182,10 +196,54 @@ class Storage:
                     max_retries,
                     priority,
                     ttl_seconds,
+                    json_dumps(metadata or {}),
+                    retry_delay,
+                    retry_backoff if retry_backoff is not None else True,
+                    webhook_url,
                 ),
                 timeout=DB_TIMEOUT,
             )
             return row["id"]
+
+    async def enqueue_batch(
+        self,
+        tasks: list[dict[str, Any]],
+    ) -> list[uuid.UUID]:
+        ids: list[uuid.UUID] = []
+        async with self.pool.acquire() as conn:
+            for t in tasks:
+                if t.get("ttl_seconds") == 0:
+                    continue
+                row = await asyncio.wait_for(
+                    conn.fetchrow(
+                        """
+                        INSERT INTO lapinq_tasks
+                            (task_name, queue_name, module_path, args, kwargs, status,
+                             scheduled_at, max_retries, priority, ttl_seconds,
+                             metadata, retry_delay, retry_backoff, webhook_url)
+                        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, 'pending',
+                                COALESCE($6::timestamptz, now()), $7, $8, $9,
+                                $10::jsonb, $11, $12, $13)
+                        RETURNING id
+                        """,
+                        t["task_name"],
+                        t.get("queue_name", "default"),
+                        t.get("module_path", ""),
+                        json_dumps(t.get("args", [])),
+                        json_dumps(t.get("kwargs", {})),
+                        t.get("scheduled_at"),
+                        t.get("max_retries", 3),
+                        t.get("priority", 0),
+                        t.get("ttl_seconds"),
+                        json_dumps(t.get("metadata", {})),
+                        t.get("retry_delay"),
+                        t.get("retry_backoff", True),
+                        t.get("webhook_url"),
+                    ),
+                    timeout=DB_TIMEOUT,
+                )
+                ids.append(row["id"])
+        return ids
 
     async def claim_task(
         self,
@@ -239,7 +297,8 @@ class Storage:
         async with self.pool.acquire() as conn:
             row = await asyncio.wait_for(
                 conn.fetchrow(
-                    "SELECT attempts, max_retries FROM lapinq_tasks WHERE id = $1", task_id
+                    "SELECT attempts, max_retries, retry_delay, retry_backoff FROM lapinq_tasks WHERE id = $1",
+                    task_id,
                 ),
                 timeout=DB_TIMEOUT,
             )
@@ -247,7 +306,12 @@ class Storage:
                 return
             attempts = row["attempts"] + 1
             if attempts < row["max_retries"]:
-                backoff = _retry_backoff_seconds(attempts)
+                if row["retry_backoff"]:
+                    backoff = _retry_backoff_seconds(attempts)
+                elif row["retry_delay"] is not None:
+                    backoff = row["retry_delay"]
+                else:
+                    backoff = 10
                 await asyncio.wait_for(
                     conn.execute(
                         """
@@ -284,6 +348,41 @@ class Storage:
                     ),
                     timeout=DB_TIMEOUT,
                 )
+
+    async def update_progress(
+        self, task_id: uuid.UUID, progress: float, message: str | None = None
+    ) -> None:
+        async with self.pool.acquire() as conn:
+            await asyncio.wait_for(
+                conn.execute(
+                    """
+                    UPDATE lapinq_tasks
+                    SET progress = $2, progress_message = $3
+                    WHERE id = $1
+                    """,
+                    task_id,
+                    progress,
+                    message,
+                ),
+                timeout=DB_TIMEOUT,
+            )
+
+    async def update_task_metadata(
+        self, task_id: uuid.UUID, metadata: dict[str, Any]
+    ) -> None:
+        async with self.pool.acquire() as conn:
+            await asyncio.wait_for(
+                conn.execute(
+                    """
+                    UPDATE lapinq_tasks
+                    SET metadata = metadata || $2::jsonb
+                    WHERE id = $1
+                    """,
+                    task_id,
+                    json_dumps(metadata),
+                ),
+                timeout=DB_TIMEOUT,
+            )
 
     async def heartbeat(self, worker_id: str) -> None:
         async with self.pool.acquire() as conn:
