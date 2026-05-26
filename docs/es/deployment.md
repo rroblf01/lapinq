@@ -81,23 +81,6 @@ volumes:
   postgres_data:
 ```
 
-## Dockerfile.lapinq
-
-```dockerfile
-FROM python:3.14-slim-bookworm
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev && rm -rf /var/lib/apt/lists/*
-
-COPY --from=ghcr.io/ricardorobles/lapinq:latest /usr/local/bin/lapinq-worker /usr/local/bin/
-COPY requirements.txt .
-RUN pip install --no-cache-dir lapinq
-
-COPY . .
-```
-
 ## Consideraciones de Producción
 
 ### PostgreSQL

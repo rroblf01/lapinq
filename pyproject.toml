@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "lapinq"
-version = "1.2.0"
+version = "1.3.0"
 description = "A lightweight task queue with PostgreSQL backend"
 readme = "README.md"
 authors = [
@@ -35,9 +35,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ricardorobles/lapinq"
-Repository = "https://github.com/ricardorobles/lapinq"
-Documentation = "https://ricardorobles.github.io/lapinq"
+Homepage = "https://github.com/rroblf01/lapinq"
+Repository = "https://github.com/rroblf01/lapinq"
+Documentation = "https://rroblf01.github.io/lapinq"
 
 [project.scripts]
 lapinq = "lapinq.__main__:main"

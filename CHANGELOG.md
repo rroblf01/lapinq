@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.3.0] - 2026-05-26
+
+### Added
+- Authentication system — login/logout, session tokens (HMAC-signed cookies), role-based dashboard access
+- Admin user management page — create/delete users, change roles, configure per-queue permissions
+- Change password endpoint for authenticated users
+- WebSocket authentication — first-message protocol with `__auth__` token before data exchange
+- Dashboard login page with error feedback
+- Task name filter in dashboard — filter tasks by name via WebSocket
+- Session token embedded directly in HTML (avoids httponly cookie restrictions for WebSocket auth)
+- `/admin/users` — paginated user table with role/permission editing
+- `/account/password` — password change endpoint (current password required)
+
+### Fixed
+- WebSocket `_send` crash on DB pool closure during shutdown — `shutting_down` flag checked before any query, raises `WebSocketDisconnect(1001)` cleanly with no error traceback
+- WebSocket infinite reconnect loop — client no longer reconnects on close codes 4001 (auth failure), 1011 (server error), or 1001 (going away); exponential backoff added for other reconnections
+- WebSocket `recv_task.result()` `RuntimeError` when socket already closed — wrapped in try/except, converts to clean `WebSocketDisconnect`
+- Queue filter dropdown now updates dynamically when new queues appear — server sends `queues` list in WS payload, client rebuilds `<select>` options preserving current selection
+- Missing `queues_html`/`tasks_html` imports in server.py (NameError at runtime)
+- Dead `_get_session_token()` function referencing browser `document` from Python code
+- Unused `queue_options` variable in dashboard.py
+- `base64.binascii.Error` → broader `Exception` in password verification
+- Type error in login handler (Starlette `FormData.get()` returns `UploadFile | str`, cast to `str`)
+- E501 line-too-long in CSS, SQL, and JS template strings
+
+### Changed
+- Dashboard filters now include Task Name field
+- WebSocket clients must authenticate via `{type:"auth",token:"..."}` on connect
+- Session cookie is `httponly` with `samesite=lax`, 24h expiry
+- Requires `LAPINQ_SESSION_SECRET` environment variable (auto-generated if empty)
+- Default admin user (`admin`/`admin`) created on first startup via `ensure_default_admin()`
+- `/sw.js` returns 204 No Content (silences browser service worker 404 in logs)
+
 ## [1.2.0] - 2026-05-25
 
 ### Added
@@ -71,5 +104,5 @@
 - `listen_for_changes` uses separate connection instead of pool
 - WebSocket closes on send errors instead of silent loop
 - Worker idle backoff now exponential (0.1s → max 5s)
-- mkdocs.yml repo URL corrected to `ricardorobles/lapinq`
+- mkdocs.yml repo URL corrected to `rroblf01/lapinq`
 - `inspect.getmodule()` now raises clear error when module is unresolvable

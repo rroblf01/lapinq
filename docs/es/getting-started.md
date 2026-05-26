@@ -11,7 +11,7 @@ pip install lapinq
 ### Desde el código fuente
 
 ```bash
-git clone https://github.com/ricardorobles/lapinq.git
+git clone https://github.com/rroblf01/lapinq.git
 cd lapinq
 pip install maturin
 maturin develop

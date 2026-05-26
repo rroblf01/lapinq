@@ -2,7 +2,7 @@
 
 **A lightweight task queue with PostgreSQL backend — replacing Celery + RabbitMQ with a single container.**
 
-[![CI](https://github.com/ricardorobles/lapinq/actions/workflows/ci.yml/badge.svg)](https://github.com/ricardorobles/lapinq/actions/workflows/ci.yml)
+[![CI](https://github.com/rroblf01/lapinq/actions/workflows/ci.yml/badge.svg)](https://github.com/rroblf01/lapinq/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/lapinq)](https://pypi.org/project/lapinq/)
 [![Python](https://img.shields.io/pypi/pyversions/lapinq)](https://pypi.org/project/lapinq/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -48,7 +48,7 @@ pip install lapinq
 Or from source:
 
 ```bash
-git clone https://github.com/ricardorobles/lapinq.git
+git clone https://github.com/rroblf01/lapinq.git
 cd lapinq
 pip install maturin
 maturin develop
@@ -138,7 +138,7 @@ Visit **http://localhost:8001/dashboard** to monitor queues and tasks in real ti
 
 ## Documentation
 
-Full documentation is available at **[https://ricardorobles.github.io/lapinq](https://ricardorobles.github.io/lapinq)**
+Full documentation is available at **[https://rroblf01.github.io/lapinq](https://rroblf01.github.io/lapinq)**
 
 ## Docker
 

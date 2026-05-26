@@ -960,7 +960,7 @@ async def metrics(request: Request) -> Response:
             )
     lines.append("# HELP lapinq_info Lapinq metadata")
     lines.append("# TYPE lapinq_info gauge")
-    lines.append('lapinq_info{version="1.2.0"} 1')
+    lines.append('lapinq_info{version="1.3.0"} 1')
     lines.append("")
     return Response("\n".join(lines), media_type="text/plain; version=0.0.4")
 
