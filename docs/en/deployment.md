@@ -139,7 +139,7 @@ Without this, a random secret is generated each startup, invalidating all active
 LAPINQ_RATE_LIMIT=60 python -m lapinq server
 ```
 
-Limits requests per IP per minute on `/api/*` routes.
+Limits requests per IP per minute on `/api/*` routes
 
 ### Monitoring
 

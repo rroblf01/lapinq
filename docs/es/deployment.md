@@ -139,7 +139,7 @@ Sin esto, se genera un secreto aleatorio en cada inicio, invalidando todas las s
 LAPINQ_RATE_LIMIT=60 python -m lapinq server
 ```
 
-Limita peticiones por IP por minuto en rutas `/api/*`.
+Limita peticiones por IP por minuto en rutas `/api/*`
 
 ### Monitoreo
 
