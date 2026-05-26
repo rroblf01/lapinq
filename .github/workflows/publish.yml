@@ -69,6 +69,7 @@ jobs:
       url: https://pypi.org/p/lapinq
     permissions:
       id-token: write
+      contents: write
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -79,3 +80,15 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           attestations: true
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - run: pip install mkdocs mkdocs-material mkdocs-static-i18n
+
+      - run: mkdocs gh-deploy --force
