@@ -5,7 +5,7 @@ import uuid
 
 import httpx
 import pytest
-from lapinq.server import create_app
+from lapinq.server import _make_session_token, create_app
 from lapinq.storage import Storage
 
 DATABASE_URL = "postgresql://postgres:test@localhost:5432/lapinq_test"
@@ -267,12 +267,14 @@ async def test_queue_stats():
 
 async def test_dashboard_page():
     storage = await Storage.create(DATABASE_URL)
-    app = create_app(database_url=DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, session_secret="test-secret")
     app.state.storage = storage
+    token = _make_session_token("test-secret", str(uuid.uuid4()), "testuser", "admin")
     try:
         async with (
             httpx.ASGITransport(app=app) as transport,
-            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+            httpx.AsyncClient(transport=transport, base_url="http://test",
+                              cookies={"lapinq_session": token}) as client,
         ):
             resp = await client.get("/")
             assert resp.status_code == 200
@@ -352,12 +354,14 @@ async def test_auth_middleware_skips_health():
 
 async def test_auth_middleware_skips_dashboard():
     storage = await Storage.create(DATABASE_URL)
-    app = create_app(database_url=DATABASE_URL, api_key="secret-42")
+    app = create_app(database_url=DATABASE_URL, api_key="secret-42", session_secret="test-secret")
     app.state.storage = storage
+    token = _make_session_token("test-secret", str(uuid.uuid4()), "testuser", "admin")
     try:
         async with (
             httpx.ASGITransport(app=app) as transport,
-            httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+            httpx.AsyncClient(transport=transport, base_url="http://test",
+                              cookies={"lapinq_session": token}) as client,
         ):
             resp = await client.get("/")
             assert resp.status_code == 200
@@ -437,8 +441,10 @@ async def test_cors_preflight_with_auth():
 async def test_websocket_sends_stats_and_tasks():
     from starlette.testclient import TestClient
 
-    app = create_app(database_url=DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, session_secret="test-secret")
+    token = _make_session_token("test-secret", str(uuid.uuid4()), "testuser", "admin")
     with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "auth", "token": token})
         data = ws.receive_json()
         assert "cards" in data
         assert "table" in data
@@ -722,8 +728,10 @@ async def test_list_failed_tasks_with_queue_filter():
 async def test_websocket_queue_filter():
     from starlette.testclient import TestClient
 
-    app = create_app(database_url=DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, session_secret="test-secret")
+    token = _make_session_token("test-secret", str(uuid.uuid4()), "testuser", "admin")
     with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "auth", "token": token})
         data = ws.receive_json()
         assert "cards" in data
         assert "table" in data
@@ -762,12 +770,14 @@ async def test_websocket_id_filter_partial():
     from starlette.testclient import TestClient
 
     storage = await Storage.create(DATABASE_URL)
-    app = create_app(database_url=DATABASE_URL)
+    app = create_app(database_url=DATABASE_URL, session_secret="test-secret")
     app.state.storage = storage
+    token = _make_session_token("test-secret", str(uuid.uuid4()), "testuser", "admin")
     try:
         tid = await storage.enqueue("id_filter_test", "q1", "tests.test_execute")
         assert tid is not None
         with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "auth", "token": token})
             ws.receive_json()
             prefix = str(tid)[:8]
             ws.send_json({"id": prefix})
