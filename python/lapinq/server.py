@@ -234,6 +234,7 @@ def create_app(
     dashboard_routes = [
         Route("/", dashboard, methods=["GET"]),
         Route("/favicon.ico", favicon, methods=["GET"]),
+        Route("/sw.js", service_worker, methods=["GET"]),
         WebSocketRoute("/ws", ws_endpoint),
         Route("/health", health, methods=["GET"]),
         Route("/metrics", metrics, methods=["GET"]),
@@ -839,13 +840,14 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     q = error_search.lower()
                     tasks = [t for t in tasks if q in str(t.get("error", "")).lower()]
                 tasks = tasks[:20]
-                if queue_filter:
-                    stats = [s for s in stats if s["queue_name"] == queue_filter]
+            all_queues = sorted({s["queue_name"] for s in stats})
+            if queue_filter:
+                stats = [s for s in stats if s["queue_name"] == queue_filter]
             cards = _queue_cards_html(stats)
             table = _tasks_table_html([_serialize_task(t) for t in tasks])
             if cards != last_cards or table != last_table or changed:
                 last_cards, last_table, changed = cards, table, False
-                payload: dict[str, Any] = {"cards": cards, "table": table}
+                payload: dict[str, Any] = {"cards": cards, "table": table, "queues": all_queues}
                 if current_ws_user:
                     payload["user"] = {"role": current_ws_user["role"], "username": current_ws_user["username"]}
                 ci = getattr(websocket.app.state, "cleanup_interval", 0)
@@ -925,6 +927,10 @@ FAVICON_PATH = os.path.join(os.path.dirname(__file__), "favicon.ico")
 
 async def favicon(request: Request) -> FileResponse:
     return FileResponse(FAVICON_PATH, media_type="image/x-icon")
+
+
+async def service_worker(_request: Request) -> Response:
+    return Response(status_code=204)
 
 
 async def health(request: Request) -> JSONResponse:

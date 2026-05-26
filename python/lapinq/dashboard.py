@@ -322,6 +322,16 @@ function connect() {{
     ws.onmessage = function(e) {{
         var data = JSON.parse(e.data);
         if (data.cards) document.getElementById("queue-cards").innerHTML = data.cards;
+        if (data.queues) {{
+            var sel = document.getElementById("queue-filter");
+            var cur = sel.value;
+            var html = "<option value=''>All queues</option>";
+            for (var i = 0; i < data.queues.length; i++) {{
+                html += "<option value='" + data.queues[i] + "'>" + data.queues[i] + "</option>";
+            }}
+            sel.innerHTML = html;
+            sel.value = data.queues.indexOf(cur) >= 0 ? cur : "";
+        }}
         if (data.table) document.getElementById("tasks-table").innerHTML = data.table;
         if (data.cleanup_interval) document.getElementById("cleanup-info").innerHTML =
             "Cleanup every " + data.cleanup_interval + "s";
@@ -333,7 +343,12 @@ function connect() {{
         var lm = document.getElementById("load-more");
         if (lm) lm.style.display = data.has_more ? "inline" : "none";
     }};
-    ws.onclose = function() {{ setTimeout(connect, 1000); }};
+    var reconnectDelay = 1000;
+    ws.onclose = function(e) {{
+        if (e.code >= 4000 || e.code === 1011) return;
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    }};
 }}
 function updateUIForRole() {{
     var isAdmin = currentUser && currentUser.role === "admin";
