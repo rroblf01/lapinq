@@ -173,7 +173,8 @@ td.actions { white-space: nowrap; }
 }
 .modal-box input:focus, .modal-box select:focus { border-color:#6366f1; box-shadow:0 0 0 2px rgba(99,102,241,0.15); }
 .modal-box .actions { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem; }
-.modal-box button { padding:0.5rem 1rem; border-radius:0.375rem; font-size:0.8125rem; font-weight:600; cursor:pointer; border:1px solid #d1d5db; background:#fff; color:#4b5563; }
+.modal-box button { padding:0.5rem 1rem; border-radius:0.375rem; font-size:0.8125rem; font-weight:600;
+    cursor:pointer; border:1px solid #d1d5db; background:#fff; color:#4b5563; }
 .modal-box button.primary { background:#6366f1; color:#fff; border-color:#6366f1; }
 .modal-box button.primary:hover { background:#4f46e5; }
 .modal-box button:hover { background:#f3f4f6; }
@@ -183,25 +184,28 @@ td.actions { white-space: nowrap; }
 .admin-wrap { max-width:800px; margin:0 auto; padding:1.5rem; }
 .admin-wrap h1 { font-size:1.5rem; font-weight:700; margin-bottom:1.5rem; }
 .admin-wrap h1 a { font-size:0.875rem; font-weight:400; color:#6366f1; text-decoration:none; margin-left:1rem; }
-.admin-wrap table { width:100%; border-collapse:collapse; background:#fff; border-radius:0.75rem; overflow:hidden; border:1px solid #e5e7eb; }
-.admin-wrap th { text-align:left; font-size:0.6875rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; padding:0.75rem 1rem; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
+.admin-wrap table { width:100%; border-collapse:collapse; background:#fff;
+    border-radius:0.75rem; overflow:hidden; border:1px solid #e5e7eb; }
+.admin-wrap th { text-align:left; font-size:0.6875rem; color:#6b7280;
+    text-transform:uppercase; letter-spacing:0.05em; padding:0.75rem 1rem;
+    border-bottom:1px solid #e5e7eb; background:#f9fafb; }
 .admin-wrap td { padding:0.75rem 1rem; font-size:0.8125rem; border-bottom:1px solid #f3f4f6; color:#4b5563; }
-.admin-wrap .btn-sm { padding:0.25rem 0.5rem; font-size:0.6875rem; border-radius:0.25rem; border:1px solid #d1d5db; background:#fff; color:#4b5563; cursor:pointer; margin-right:0.25rem; }
+.admin-wrap .btn-sm { padding:0.25rem 0.5rem; font-size:0.6875rem;
+    border-radius:0.25rem; border:1px solid #d1d5db; background:#fff;
+    color:#4b5563; cursor:pointer; margin-right:0.25rem; }
 .admin-wrap .btn-sm:hover { background:#f3f4f6; }
 .admin-wrap .btn-sm.danger { color:#dc2626; border-color:#dc2626; }
 .admin-wrap .btn-sm.danger:hover { background:#fef2f2; }
 .admin-wrap .btn-sm.primary { color:#fff; background:#6366f1; border-color:#6366f1; }
 .admin-wrap .btn-sm.primary:hover { background:#4f46e5; }
-.admin-wrap .create-form { background:#fff; border-radius:0.75rem; padding:1.25rem; border:1px solid #e5e7eb; margin-bottom:1.5rem; display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap; }
+.admin-wrap .create-form { background:#fff; border-radius:0.75rem; padding:1.25rem;
+    border:1px solid #e5e7eb; margin-bottom:1.5rem; display:flex; gap:0.75rem;
+    align-items:flex-end; flex-wrap:wrap; }
 .admin-wrap .create-form label { font-size:0.8125rem; font-weight:500; display:block; margin-bottom:0.25rem; }
-.admin-wrap .create-form input, .admin-wrap .create-form select { padding:0.5rem 0.75rem; border:1px solid #d1d5db; border-radius:0.375rem; font-size:0.875rem; outline:none; }
+.admin-wrap .create-form input, .admin-wrap .create-form select {
+    padding:0.5rem 0.75rem; border:1px solid #d1d5db; border-radius:0.375rem; font-size:0.875rem; outline:none; }
 .admin-wrap .create-form input:focus, .admin-wrap .create-form select:focus { border-color:#6366f1; }
 """
-
-
-def _get_session_token() -> str:
-    match = __import__("re").search(r'(?:^|;\s*)lapinq_session=([^;]+)', document.cookie)
-    return match.group(1) if match else ""
 
 
 def dashboard_page(
@@ -267,7 +271,9 @@ def dashboard_page(
     <input id="result-filter" type="text" placeholder="Search result..." oninput="setFilter('result',this.value)"></span>
     <span class="filter-group"><label for="error-filter">Error:</label>
     <input id="error-filter" type="text" placeholder="Search error..." oninput="setFilter('error',this.value)"></span>
-    <button class="btn-action btn-delete" id="delete-filtered-btn" onclick="deleteFiltered()" {'style="display:none"' if not is_admin else ''}>Delete filtered</button>
+    <button class="btn-action btn-delete" id="delete-filtered-btn"
+      onclick="deleteFiltered()"
+      {'style="display:none"' if not is_admin else ''}>Delete filtered</button>
   </div>
 
   <div id="cleanup-info" class="cleanup-info"></div>
@@ -504,8 +510,6 @@ def admin_users_page(users: list[dict[str, Any]], queues: list[str]) -> HTMLResp
                 <button class="btn-sm danger" onclick="deleteUser('{u['id']}','{u['username']}')">Delete</button>
             </td>
         </tr>"""
-    queue_options = "".join(f"<option value='{q}'>{q}</option>" for q in queues)
-
     return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -550,7 +554,8 @@ def admin_users_page(users: list[dict[str, Any]], queues: list[str]) -> HTMLResp
 <div class="modal-overlay" id="perms-modal">
   <div class="modal-box">
     <h2>Edit Permissions</h2>
-    <p style="font-size:0.8125rem;color:#6b7280;margin-bottom:1rem">Allow user to delete/cancel tasks in specific queues. Leave empty = no access.</p>
+    <p style="font-size:0.8125rem;color:#6b7280;margin-bottom:1rem">
+      Allow user to delete/cancel tasks in specific queues. Leave empty = no access.</p>
     <div id="perms-list"></div>
     <div class="actions">
       <button onclick="closeModal('perms-modal')">Cancel</button>
@@ -610,9 +615,11 @@ function editPerms(userId, perms) {{
         var qPerms = editingPerms[q] || [];
         var div = document.createElement("div");
         div.style.cssText = "margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem";
-        div.innerHTML = '<span style="font-size:0.8125rem;min-width:100px">' + q + '</span>'
-            + '<label><input type="checkbox" value="delete" ' + (qPerms.indexOf("delete") >= 0 ? "checked" : "") + '> delete</label>'
-            + '<label><input type="checkbox" value="cancel" ' + (qPerms.indexOf("cancel") >= 0 ? "checked" : "") + '> cancel</label>';
+        var labelD = '<label><input type="checkbox" value="delete" '
+            + (qPerms.indexOf("delete") >= 0 ? "checked" : "") + '> delete</label>';
+        var labelC = '<label><input type="checkbox" value="cancel" '
+            + (qPerms.indexOf("cancel") >= 0 ? "checked" : "") + '> cancel</label>';
+        div.innerHTML = '<span style="font-size:0.8125rem;min-width:100px">' + q + '</span>' + labelD + labelC;
         list.appendChild(div);
     }}
     document.getElementById("perms-save-btn").onclick = function() {{

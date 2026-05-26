@@ -25,7 +25,8 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Redire
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from lapinq.dashboard import _queue_cards_html, _tasks_table_html, admin_users_page as _render_admin_users, dashboard_page
+from lapinq.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
+from lapinq.dashboard import admin_users_page as _render_admin_users
 from lapinq.storage import Storage
 from lapinq.worker import run_worker_inline
 
@@ -567,8 +568,8 @@ async def login(request: Request) -> HTMLResponse | RedirectResponse:
     secret = request.app.state.session_secret
     try:
         body = await request.form()
-        username = body.get("username", "")
-        password = body.get("password", "")
+        username = str(body.get("username", ""))
+        password = str(body.get("password", ""))
     except Exception:
         return HTMLResponse(_login_error_html("Invalid form data"))
     user = await storage.authenticate(username, password)
@@ -857,8 +858,12 @@ async def ws_endpoint(websocket: WebSocket) -> None:
             logger.exception("Error in WebSocket _send")
             with contextlib.suppress(Exception):
                 await websocket.close(1011)
+            raise WebSocketDisconnect(1011) from None
 
-    await _send()
+    try:
+        await _send()
+    except WebSocketDisconnect:
+        return
 
     try:
         while True:
@@ -875,7 +880,10 @@ async def ws_endpoint(websocket: WebSocket) -> None:
             done, _ = await asyncio.wait(pending, timeout=2, return_when=asyncio.FIRST_COMPLETED)
 
             if recv_task in done:
-                data = recv_task.result()
+                try:
+                    data = recv_task.result()
+                except (WebSocketDisconnect, RuntimeError):
+                    raise WebSocketDisconnect(1011) from None
                 if "queue" in data:
                     queue_filter = data["queue"] or None
                     changed = True

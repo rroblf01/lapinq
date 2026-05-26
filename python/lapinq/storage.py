@@ -201,7 +201,7 @@ class Storage:
             expected = base64.b64decode(parts[4])
             h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations)
             return hmac.compare_digest(h, expected)
-        except (ValueError, IndexError, base64.binascii.Error):
+        except (ValueError, IndexError, Exception):
             return False
 
     async def ensure_default_admin(self) -> None:
@@ -252,7 +252,8 @@ class Storage:
         pw = self._hash_password(password)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "INSERT INTO lapinq_users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at",
+                "INSERT INTO lapinq_users (username, password_hash, role)"
+                " VALUES ($1, $2, $3) RETURNING id, username, role, created_at",
                 username, pw, role,
             )
             return {
