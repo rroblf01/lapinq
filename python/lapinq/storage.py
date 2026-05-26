@@ -453,6 +453,7 @@ class Storage:
         self,
         queue_name: str | None = None,
         status: str | None = None,
+        task_name: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         async with self.pool.acquire() as conn:
@@ -467,6 +468,10 @@ class Storage:
                 param_idx += 1
                 conditions.append(f"status = ${param_idx}")
                 params.append(status)
+            if task_name:
+                param_idx += 1
+                conditions.append(f"task_name ILIKE ${param_idx}")
+                params.append(f"%{task_name}%")
 
             where = " AND ".join(conditions) if conditions else "TRUE"
             param_idx += 1
@@ -548,6 +553,53 @@ class Storage:
                 timeout=DB_TIMEOUT,
             )
             return result != "UPDATE 0"
+
+    async def delete_tasks(
+        self,
+        queue_name: str | None = None,
+        status: str | None = None,
+        task_name: str | None = None,
+        args_search: str | None = None,
+        result_search: str | None = None,
+        error_search: str | None = None,
+    ) -> int:
+        async with self.pool.acquire() as conn:
+            conditions: list[str] = []
+            params: list[Any] = []
+            idx = 0
+            if queue_name:
+                idx += 1
+                conditions.append(f"queue_name = ${idx}")
+                params.append(queue_name)
+            if status:
+                idx += 1
+                conditions.append(f"status = ${idx}")
+                params.append(status)
+            if task_name:
+                idx += 1
+                conditions.append(f"task_name ILIKE ${idx}")
+                params.append(f"%{task_name}%")
+            if args_search:
+                idx += 1
+                conditions.append(f"args::text ILIKE ${idx}")
+                params.append(f"%{args_search}%")
+            if result_search:
+                idx += 1
+                conditions.append(f"result ILIKE ${idx}")
+                params.append(f"%{result_search}%")
+            if error_search:
+                idx += 1
+                conditions.append(f"error ILIKE ${idx}")
+                params.append(f"%{error_search}%")
+            where = " AND ".join(conditions) if conditions else "TRUE"
+            result = await asyncio.wait_for(
+                conn.execute(f"DELETE FROM lapinq_tasks WHERE {where}", *params),
+                timeout=DB_TIMEOUT,
+            )
+            count = int(result.split()[-1]) if result else 0
+            if count:
+                logger.info("Deleted %d tasks by filter", count)
+            return count
 
     async def cleanup_expired_tasks(self) -> int:
         async with self.pool.acquire() as conn:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import asyncio
 import logging
 import os
@@ -29,7 +30,7 @@ app = FastAPI(title="Lapinq Example", lifespan=lifespan)
 @queue.task
 async def send_email(recipient: str, subject: str, body: str) -> str:
     logger.info("Sending email to %s: %s", recipient, subject)
-    await asyncio.sleep(5)  # Simulate email sending delay
+    await asyncio.sleep(random.uniform(0.5, 10.0))  # Simulate email sending delay
     logger.info("Email sent to %s", recipient)
     return f"sent to {recipient}: {subject}"
 

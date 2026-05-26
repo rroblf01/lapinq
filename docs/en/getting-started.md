@@ -79,6 +79,40 @@ print(ref.task_id)  # "uuid-..."
 print(ref.wait(timeout=30))  # poll for result
 ```
 
+## Task TTL (Time To Live)
+
+Tasks expire automatically after a configurable time. Set `ttl_seconds` when enqueuing.
+
+### Keep for 1 day (86400s)
+
+```python
+ref = hello.queue(name="World", ttl_seconds=86400)
+```
+
+### Keep for 1 minute (60s)
+
+```python
+ref = hello.queue(name="World", ttl_seconds=60)
+```
+
+### Don't persist (0 = no TTL, task remains until completed or archived)
+
+```python
+ref = hello.queue(name="World", ttl_seconds=0)
+```
+
+> `ttl_seconds=0` disables expiry for that task. The server never deletes it unless you archive old tasks with `--archive-after-days` (default 30) or delete manually via the dashboard.
+
+### Enable periodic cleanup
+
+The server must run with `--cleanup-interval` to expire tasks automatically:
+
+```bash
+python -m lapinq server --worker --port 8001 --cleanup-interval 60
+```
+
+This checks for expired tasks every 60 seconds. Without this flag, TTL is stored but never enforced.
+
 ## Async Client
 
 ```python

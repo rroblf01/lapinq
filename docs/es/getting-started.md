@@ -79,6 +79,40 @@ print(ref.task_id)  # "uuid-..."
 print(ref.wait(timeout=30))  # sondea el resultado
 ```
 
+## TTL de Tareas (Time To Live)
+
+Las tareas expiran automáticamente después de un tiempo configurable. Establece `ttl_seconds` al encolar.
+
+### Conservar por 1 día (86400s)
+
+```python
+ref = saludar.queue(nombre="Mundo", ttl_seconds=86400)
+```
+
+### Conservar por 1 minuto (60s)
+
+```python
+ref = saludar.queue(nombre="Mundo", ttl_seconds=60)
+```
+
+### No persistir (0 = sin TTL, la tarea permanece hasta completarse o archivarse)
+
+```python
+ref = saludar.queue(nombre="Mundo", ttl_seconds=0)
+```
+
+> `ttl_seconds=0` desactiva la expiración para esa tarea. El servidor nunca la elimina a menos que archives tareas antiguas con `--archive-after-days` (30 por defecto) o las borres manualmente desde el dashboard.
+
+### Activar limpieza periódica
+
+El servidor debe ejecutarse con `--cleanup-interval` para expirar tareas automáticamente:
+
+```bash
+python -m lapinq server --worker --port 8001 --cleanup-interval 60
+```
+
+Esto revisa tareas expiradas cada 60 segundos. Sin esta bandera, el TTL se almacena pero nunca se aplica.
+
 ## Cliente Asíncrono
 
 ```python

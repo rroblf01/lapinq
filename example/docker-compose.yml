@@ -35,7 +35,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://lapinq:lapinq@postgres:5432/lapinq
-      LAGOMORPH_SERVER_URL: http://lapinq:8001
+      LAPINQ_SERVER_URL: http://lapinq:8001
     volumes:
       - ./app:/workspace/example/app
     depends_on:

@@ -109,6 +109,8 @@ td.actions { white-space: nowrap; }
 .btn-action:hover { background: #f3f4f6; }
 .btn-action.danger { color: #dc2626; border-color: #dc2626; }
 .btn-action.danger:hover { background: #fef2f2; }
+.btn-delete { color: #dc2626; border-color: #dc2626; font-weight: 600; }
+.btn-delete:hover { background: #fef2f2; }
 
 .badge {
     display: inline-block;
@@ -179,6 +181,8 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
         <option value="failed">Failed</option>
         <option value="cancelled">Cancelled</option>
       </select></span>
+      <span class="filter-group"><label for="task-name-filter">Task:</label>
+      <input id="task-name-filter" type="text" placeholder="Task name..." oninput="setFilter('task_name',this.value)"></span>
       <span class="filter-group"><label for="id-filter">ID:</label>
       <input id="id-filter" type="text" placeholder="Task ID..." oninput="setFilter('id',this.value)"></span>
       <span class="filter-group"><label for="args-filter">Args:</label>
@@ -187,6 +191,7 @@ def dashboard_page(stats: list[dict[str, Any]] | None = None) -> HTMLResponse:
       <input id="result-filter" type="text" placeholder="Search result..." oninput="setFilter('result',this.value)"></span>
       <span class="filter-group"><label for="error-filter">Error:</label>
       <input id="error-filter" type="text" placeholder="Search error..." oninput="setFilter('error',this.value)"></span>
+      <button class="btn-action btn-delete" onclick="deleteFiltered()">Delete filtered</button>
     </div>
   </div>
 
@@ -243,10 +248,42 @@ function confirmAction(taskId, action) {{
         }})
         .catch(function(err) {{ alert("Request failed: " + err); }});
 }}
+function deleteFiltered() {{
+    if (!confirm("Delete all tasks matching current filters?")) return;
+    var params = [];
+    var queue = document.getElementById("queue-filter").value;
+    if (queue) params.push("queue=" + encodeURIComponent(queue));
+    var status = document.getElementById("status-filter").value;
+    if (status) params.push("status=" + encodeURIComponent(status));
+    var taskName = document.getElementById("task-name-filter").value.trim();
+    if (taskName) params.push("task_name=" + encodeURIComponent(taskName));
+    var args = document.getElementById("args-filter").value.trim();
+    if (args) params.push("args=" + encodeURIComponent(args));
+    var result = document.getElementById("result-filter").value.trim();
+    if (result) params.push("result=" + encodeURIComponent(result));
+    var error = document.getElementById("error-filter").value.trim();
+    if (error) params.push("error=" + encodeURIComponent(error));
+    var url = "/api/v1/tasks" + (params.length ? "?" + params.join("&") : "");
+    fetch(url, {{ method: "DELETE" }})
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+            alert("Deleted " + data.deleted + " tasks");
+            if (data.deleted > 0) {{
+                taskOffset = 20;
+                if (ws && ws.readyState === WebSocket.OPEN) {{
+                    ws.send(JSON.stringify({{}}));
+                }}
+            }}
+        }})
+        .catch(function(err) {{ alert("Delete failed: " + err); }});
+}}
 function loadMore() {{
     var limit = taskOffset + 20;
     taskOffset = limit;
-    fetch("/api/v1/tasks?limit=" + limit)
+    var taskName = document.getElementById("task-name-filter").value.trim();
+    var url = "/api/v1/tasks?limit=" + limit;
+    if (taskName) url += "&task_name=" + encodeURIComponent(taskName);
+    fetch(url)
         .then(function(r) {{ return r.json(); }})
         .then(function(tasks) {{
             var table = document.getElementById("tasks-table");
@@ -257,6 +294,7 @@ function loadMore() {{
             var html = '<table><thead><tr><th>ID</th><th>Task</th><th>Queue</th>'
                 + '<th>Args</th><th>Result</th><th>Error</th><th>Status</th><th>TTL</th>'
                 + '<th>Actions</th></tr></thead><tbody>';
+            function esc(s) {{ return s.replace(/\x22/g,'&quot;'); }}
             for (var i = 0; i < tasks.length; i++) {{
                 var t = tasks[i];
                 var tid = (t.id || "").substr(0,8);
@@ -275,7 +313,6 @@ function loadMore() {{
                 html += '<tr><td class="mono">' + tid + '...</td>';
                 html += '<td class="name">' + (t.task_name || "") + '</td>';
                 html += '<td>' + (t.queue_name || "") + '</td>';
-                function esc(s) {{ return s.replace(/\x22/g,'&quot;'); }}
                 html += '<td class="trunc" title="' + esc(argsStr) + '">' + argsStr.substr(0,60) + '</td>';
                 html += '<td class="trunc" title="' + esc(resultVal) + '">' + resultVal.substr(0,60) + '</td>';
                 html += '<td class="trunc err" title="' + esc(errorVal) + '">' + errorVal.substr(0,60) + '</td>';
@@ -283,10 +320,10 @@ function loadMore() {{
                 html += '<td class="mono">' + ttl + '</td>';
                 if (status === "pending") {{
                     html += '<td class="actions"><button class="btn-action danger"'
-                        + ' onclick="confirmAction(\'' + t.id + '\',\'cancel\')">Cancel</button></td>';
+                        + ' onclick="confirmAction(' + "'" + t.id + "'" + ',' + "'cancel'" + ')">Cancel</button></td>';
                 }} else if (status === "failed") {{
                     html += '<td class="actions"><button class="btn-action"'
-                        + ' onclick="confirmAction(\'' + t.id + '\',\'requeue\')">Requeue</button></td>';
+                        + ' onclick="confirmAction(' + "'" + t.id + "'" + ',' + "'requeue'" + ')">Requeue</button></td>';
                 }} else {{
                     html += '<td class="actions"></td>';
                 }}

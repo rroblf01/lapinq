@@ -152,6 +152,7 @@ def create_app(
         Route(f"{api_prefix}/tasks/html", tasks_html_endpoint, methods=["GET"]),
         Route(f"{api_prefix}/queues/html", queues_html_endpoint, methods=["GET"]),
         Route(f"{api_prefix}/tasks", list_tasks, methods=["GET"]),
+        Route(f"{api_prefix}/tasks", delete_tasks_endpoint, methods=["DELETE"]),
         Route(f"{api_prefix}/tasks/failed", list_failed_tasks, methods=["GET"]),
         Route(f"{api_prefix}/tasks/{{task_id:str}}", get_task, methods=["GET"]),
         Route(f"{api_prefix}/tasks/{{task_id:str}}/result", get_task_result, methods=["GET"]),
@@ -351,11 +352,31 @@ async def list_tasks(request: Request) -> JSONResponse:
     storage: Storage = request.app.state.storage
     queue_name = request.query_params.get("queue")
     status = request.query_params.get("status")
+    task_name = request.query_params.get("task_name")
     limit, err = _parse_int_param(request.query_params.get("limit", "50"), 50, "limit")
     if err:
         return err
-    tasks = await storage.list_tasks(queue_name=queue_name, status=status, limit=limit)
+    tasks = await storage.list_tasks(queue_name=queue_name, status=status, task_name=task_name, limit=limit)
     return JSONResponse([_serialize_task(t) for t in tasks])
+
+
+async def delete_tasks_endpoint(request: Request) -> JSONResponse:
+    storage: Storage = request.app.state.storage
+    queue_name = request.query_params.get("queue") or None
+    status = request.query_params.get("status") or None
+    task_name = request.query_params.get("task_name") or None
+    args_search = request.query_params.get("args") or None
+    result_search = request.query_params.get("result") or None
+    error_search = request.query_params.get("error") or None
+    count = await storage.delete_tasks(
+        queue_name=queue_name,
+        status=status,
+        task_name=task_name,
+        args_search=args_search,
+        result_search=result_search,
+        error_search=error_search,
+    )
+    return JSONResponse({"deleted": count})
 
 
 async def list_failed_tasks(request: Request) -> JSONResponse:
@@ -424,10 +445,11 @@ async def tasks_html_endpoint(request: Request) -> Response:
     storage: Storage = request.app.state.storage
     queue_name = request.query_params.get("queue")
     status = request.query_params.get("status")
+    task_name = request.query_params.get("task_name")
     limit, err = _parse_int_param(request.query_params.get("limit", "20"), 20, "limit")
     if err:
         return err
-    tasks = await storage.list_tasks(queue_name=queue_name, status=status, limit=limit)
+    tasks = await storage.list_tasks(queue_name=queue_name, status=status, task_name=task_name, limit=limit)
     serialized = [_serialize_task(t) for t in tasks]
     return tasks_html(serialized)
 
@@ -444,6 +466,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
     queue_filter: str | None = None
     id_filter: str | None = None
     status_filter: str | None = None
+    task_name_filter: str | None = None
     args_search: str | None = None
     result_search: str | None = None
     error_search: str | None = None
@@ -470,6 +493,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 tasks = await storage.list_tasks(
                     queue_name=queue_filter,
                     status=status_filter,
+                    task_name=task_name_filter,
                     limit=200,
                 )
                 if args_search:
@@ -526,6 +550,9 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     changed = True
                 if "status" in data:
                     status_filter = data["status"] or None
+                    changed = True
+                if "task_name" in data:
+                    task_name_filter = data["task_name"] or None
                     changed = True
                 if "args" in data:
                     args_search = data["args"] or None
