@@ -291,6 +291,7 @@ def create_app(
             scheduler_obj = Scheduler(storage, interval=scheduler_interval)
             bg_tasks.append(asyncio.create_task(scheduler_obj._loop()))
         yield
+        app.state.shutting_down = True
         for t in bg_tasks:
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -811,6 +812,8 @@ async def ws_endpoint(websocket: WebSocket) -> None:
 
     async def _send() -> None:
         nonlocal last_cards, last_table, changed
+        if getattr(websocket.app.state, "shutting_down", False):
+            raise WebSocketDisconnect(1001)
         try:
             if id_filter:
                 raw = id_filter.strip()

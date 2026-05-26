@@ -345,7 +345,7 @@ function connect() {{
     }};
     var reconnectDelay = 1000;
     ws.onclose = function(e) {{
-        if (e.code >= 4000 || e.code === 1011) return;
+        if (e.code >= 4000 || e.code === 1011 || e.code === 1001) return;
         setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     }};
