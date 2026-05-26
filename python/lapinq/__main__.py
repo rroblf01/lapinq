@@ -101,9 +101,11 @@ def _run_server(args: argparse.Namespace) -> None:
     api_key = os.environ.get("LAPINQ_API_KEY")
     rate_limit_str = os.environ.get("LAPINQ_RATE_LIMIT", "0")
     rate_limit = int(rate_limit_str) if rate_limit_str.isdigit() else 0
+    session_secret = os.environ.get("LAPINQ_SESSION_SECRET")
     app = create_app(
         database_url=database_url,
         api_key=api_key,
+        session_secret=session_secret,
         rate_limit=rate_limit,
         worker=args.worker,
         worker_concurrency=args.worker_concurrency,

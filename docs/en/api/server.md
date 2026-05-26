@@ -1,13 +1,14 @@
 # Server API Reference
 
-## `create_app(database_url, api_key, rate_limit, worker, ...)`
+## `create_app(database_url, api_key, session_secret, rate_limit, worker, ...)`
 
 Create a Starlette ASGI app with the lapinq REST API, dashboard, and optional inline worker.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `database_url` | `str` | `"postgresql://localhost:5432/lapinq"` | PostgreSQL connection URL |
-| `api_key` | `str \| None` | `None` | API key for auth middleware |
+| `api_key` | `str \| None` | `None` | API key for API auth middleware |
+| `session_secret` | `str \| None` | `None` | Secret for dashboard session cookies (auto-generated if empty) |
 | `rate_limit` | `int` | `0` | Max requests/min per IP (`0` = disabled) |
 | `worker` | `bool` | `False` | Run inline worker in-process |
 | `worker_concurrency` | `int` | `4` | Inline worker concurrency |
@@ -136,7 +137,27 @@ List tasks.
 |-------------|---------|-------------|
 | `queue` | — | Filter by queue name |
 | `status` | — | Filter by status (`pending`, `running`, `completed`, `failed`, `cancelled`, `expired`) |
+| `task_name` | — | Filter by task name (ILIKE) |
 | `limit` | `50` | Max results |
+
+### `DELETE /api/v1/tasks`
+
+Bulk-delete tasks matching filters. Requires admin session or `X-API-Key`.
+
+| Query param | Description |
+|-------------|-------------|
+| `queue` | Filter by queue name |
+| `status` | Filter by status |
+| `task_name` | Filter by task name (ILIKE) |
+| `args` | Filter by args content (ILIKE) |
+| `result` | Filter by result content (ILIKE) |
+| `error` | Filter by error content (ILIKE) |
+
+**Response:** `200 OK`
+
+```json
+{"deleted": 5}
+```
 
 ### `GET /api/v1/tasks/failed`
 
@@ -182,13 +203,75 @@ lapinq_tasks{queue="default",status="completed"} 100
 lapinq_tasks{queue="default",status="failed"} 1
 ```
 
+### `GET /login` — Login Page
+
+HTML login form. Shows "Invalid credentials" on failed login. Redirects to dashboard on success.
+
+### `POST /login`
+
+Form-based login. Accepts `username` and `password` form fields. Sets a session cookie on success.
+
+### `GET /logout`
+
+Clears the session cookie and redirects to `/login`.
+
 ### `GET /` — Dashboard
 
-HTML dashboard with WebSocket real-time updates at `/ws`.
+HTML dashboard with session-based auth, real-time updates via WebSocket at `/ws`. The first user is auto-created as `lapinq`/`lapinq` with admin role.
+
+### `GET /admin/users` — User Management (admin only)
+
+HTML page to create, edit roles, edit permissions, and delete users.
+
+### `POST /admin/users`
+
+Create a new user (admin only). Accepts JSON:
+
+```json
+{"username": "newuser", "password": "secret", "role": "user"}
+```
+
+### `POST /admin/users/{id}/role`
+
+Change a user's role (admin only). Accepts JSON:
+
+```json
+{"role": "admin"}
+```
+
+### `POST /admin/users/{id}/permissions`
+
+Set per-queue permissions (admin only). Accepts JSON:
+
+```json
+{"queues": {"video": ["delete", "cancel"]}}
+```
+
+### `DELETE /admin/users/{id}`
+
+Delete a user (admin only).
+
+### `POST /account/password`
+
+Change own password. Accepts JSON:
+
+```json
+{"current_password": "old", "new_password": "new"}
+```
+
+### `GET /me`
+
+Returns current user info (id, username, role, permissions).
 
 ### `WebSocket /ws`
 
-Real-time dashboard data. Server sends JSON with `cards` and `table` HTML fragments every 2 seconds or immediately when tasks change (via PostgreSQL `LISTEN`/`NOTIFY`).
+Real-time dashboard data. **First message must be authentication:**
+
+```json
+{"type": "auth", "token": "<session-token>"}
+```
+
+After auth the server sends JSON with `cards` and `table` HTML fragments every 2 seconds or immediately when tasks change (via PostgreSQL `LISTEN`/`NOTIFY`). The response also includes a `user` object with `role` and `username`.
 
 **Client → Server filter messages:**
 
@@ -196,6 +279,7 @@ Real-time dashboard data. Server sends JSON with `cards` and `table` HTML fragme
 {"queue": "video"}
 {"id": "3cd39f6d..."}
 {"status": "failed"}
+{"task_name": "process"}
 {"args": "keyword"}
 {"result": "success"}
 {"error": "timeout"}
@@ -203,9 +287,13 @@ Real-time dashboard data. Server sends JSON with `cards` and `table` HTML fragme
 
 ## Middleware
 
+### DashboardAuthMiddleware
+
+Applied automatically to all dashboard routes. Checks the `lapinq_session` cookie on every request. If invalid or missing for protected paths (`/`, `/ws`, `/admin/*`, `/account/*`), redirects to `/login`. The `/login`, `/health`, and `/metrics` paths are always public.
+
 ### AuthMiddleware
 
-Set `LAPINQ_API_KEY` env var or pass `api_key` to `create_app()`. All `/api/*` routes require `X-API-Key` header (except `OPTIONS`). Dashboard and health endpoints are public.
+Set `LAPINQ_API_KEY` env var or pass `api_key` to `create_app()`. All `/api/*` routes require either `X-API-Key` header (except `OPTIONS`) or a valid session cookie from dashboard login. This allows dashboard JS to call API endpoints seamlessly.
 
 ### RateLimitMiddleware
 
@@ -221,4 +309,10 @@ python -m lapinq server \
   --worker \
   --worker-concurrency 4 \
   --cleanup-interval 300
+```
+
+Session secret is read from `LAPINQ_SESSION_SECRET` env var. If unset, a random secret is generated on every startup (which invalidates all existing sessions after restart). Set a fixed value in production:
+
+```bash
+LAPINQ_SESSION_SECRET=your-secret-key python -m lapinq server
 ```

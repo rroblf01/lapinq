@@ -62,6 +62,13 @@ lapinq-worker --database-url postgresql://lapinq:lapinq@localhost:5432/lapinq --
 
 Abre [http://localhost:8001](http://localhost:8001) en tu navegador. El dashboard muestra estadísticas de las colas y tareas recientes con actualizaciones en tiempo real vía WebSocket.
 
+El dashboard está protegido por autenticación por sesión. En el primer inicio el servidor crea un usuario administrador por defecto:
+
+- **Usuario:** `lapinq`
+- **Contraseña:** `lapinq`
+
+Después de iniciar sesión, los administradores pueden crear usuarios adicionales, cambiar contraseñas y gestionar permisos desde la página "Manage Users".
+
 ## Tu Primera Tarea
 
 ```python
@@ -101,7 +108,7 @@ ref = saludar.queue(nombre="Mundo", ttl_seconds=60)
 ref = saludar.queue(nombre="Mundo", ttl_seconds=0)
 ```
 
-> `ttl_seconds=0` desactiva la expiración para esa tarea. El servidor nunca la elimina a menos que archives tareas antiguas con `--archive-after-days` (30 por defecto) o las borres manualmente desde el dashboard.
+> `ttl_seconds=0` desactiva la expiración para esa tarea. La tarea permanece indefinidamente a menos que la borres manualmente desde el dashboard.
 
 ### Activar limpieza periódica
 

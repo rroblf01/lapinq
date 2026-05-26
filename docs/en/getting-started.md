@@ -62,6 +62,13 @@ lapinq-worker --database-url postgresql://lapinq:lapinq@localhost:5432/lapinq --
 
 Open [http://localhost:8001](http://localhost:8001) in your browser. The dashboard shows queue statistics and recent tasks with real-time updates via WebSocket.
 
+The dashboard is protected by session-based authentication. On first run the server creates a default admin user automatically:
+
+- **Username:** `lapinq`
+- **Password:** `lapinq`
+
+After logging in, admins can create additional users, change passwords, and manage permissions from the dashboard's "Manage Users" page.
+
 ## Your First Task
 
 ```python
@@ -101,7 +108,7 @@ ref = hello.queue(name="World", ttl_seconds=60)
 ref = hello.queue(name="World", ttl_seconds=0)
 ```
 
-> `ttl_seconds=0` disables expiry for that task. The server never deletes it unless you archive old tasks with `--archive-after-days` (default 30) or delete manually via the dashboard.
+> `ttl_seconds=0` disables expiry for that task. The task remains indefinitely unless you delete it manually from the dashboard.
 
 ### Enable periodic cleanup
 

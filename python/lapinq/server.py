@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import hashlib
 import hmac
+import json as json_module
 import logging
 import os
+import secrets
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -17,11 +21,11 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from lapinq.dashboard import _queue_cards_html, _tasks_table_html, dashboard_page, queues_html, tasks_html
+from lapinq.dashboard import _queue_cards_html, _tasks_table_html, admin_users_page as _render_admin_users, dashboard_page
 from lapinq.storage import Storage
 from lapinq.worker import run_worker_inline
 
@@ -29,6 +33,33 @@ logger = logging.getLogger("lapinq.server")
 
 MAX_PAYLOAD_SIZE = int(os.environ.get("LAPINQ_MAX_PAYLOAD_SIZE", str(1024 * 100)))
 API_PREFIX = os.environ.get("LAPINQ_API_PREFIX", "/api/v1")
+
+SESSION_COOKIE = "lapinq_session"
+SESSION_MAX_AGE = 86400  # 24 hours
+
+
+def _make_session_token(secret: str, user_id: str, username: str, role: str) -> str:
+    payload = json_module.dumps({"uid": user_id, "un": username, "role": role, "exp": time.time() + SESSION_MAX_AGE})
+    b64 = base64.urlsafe_b64encode(payload.encode()).rstrip(b"=").decode()
+    sig = hmac.new(secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
+    return f"{b64}.{sig}"
+
+
+def _verify_session_token(secret: str, token: str) -> dict[str, Any] | None:
+    try:
+        parts = token.split(".")
+        if len(parts) != 2:
+            return None
+        b64, sig = parts
+        expected = hmac.new(secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        payload = json_module.loads(base64.urlsafe_b64decode(b64 + "=="))
+        if payload.get("exp", 0) < time.time():
+            return None
+        return payload
+    except (ValueError, Exception):
+        return None
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -40,18 +71,62 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class DashboardAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: Any, session_secret: str) -> None:
+        super().__init__(app)
+        self.session_secret = session_secret
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        public_paths = ("/login", "/health", "/metrics")
+        if any(request.url.path.startswith(p) for p in public_paths):
+            request.state.current_user = None
+            return await call_next(request)
+
+        if request.url.path in ("/", "/ws", "/admin", "/me", "/account/password", "/admin/users", "/logout") \
+                or request.url.path.startswith("/admin/") or request.url.path.startswith("/account/"):
+            token = request.cookies.get(SESSION_COOKIE, "")
+            session = _verify_session_token(self.session_secret, token) if token else None
+            if session is None:
+                if request.url.path.startswith("/ws"):
+                    request.state.current_user = None
+                    return await call_next(request)
+                return RedirectResponse(url="/login")
+            request.state.current_user = {
+                "id": session["uid"],
+                "username": session["un"],
+                "role": session["role"],
+            }
+            return await call_next(request)
+
+        request.state.current_user = None
+        return await call_next(request)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: Any, api_key: str) -> None:
+    def __init__(self, app: Any, api_key: str, session_secret: str) -> None:
         super().__init__(app)
         self.api_key = api_key
+        self.session_secret = session_secret
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.method == "OPTIONS":
             return await call_next(request)
         if request.url.path.startswith(f"{API_PREFIX}/"):
             key = request.headers.get("X-API-Key", "")
-            if not hmac.compare_digest(key, self.api_key):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
+            if key and hmac.compare_digest(key, self.api_key):
+                request.state.current_user = None
+                return await call_next(request)
+            token = request.cookies.get(SESSION_COOKIE, "")
+            session = _verify_session_token(self.session_secret, token) if token else None
+            if session:
+                request.state.current_user = {
+                    "id": session["uid"],
+                    "username": session["un"],
+                    "role": session["role"],
+                }
+                return await call_next(request)
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        request.state.current_user = None
         return await call_next(request)
 
 
@@ -127,6 +202,7 @@ def _parse_int_param(value: str | None, default: int, name: str) -> tuple[int, J
 def create_app(
     database_url: str = "postgresql://localhost:5432/lapinq",
     api_key: str | None = None,
+    session_secret: str | None = None,
     rate_limit: int = 0,
     worker: bool = False,
     worker_concurrency: int = 4,
@@ -138,9 +214,25 @@ def create_app(
     scheduler: bool = False,
     scheduler_interval: float = 60.0,
 ) -> Starlette:
+    if session_secret is None:
+        session_secret = os.environ.get("LAPINQ_SESSION_SECRET", secrets.token_hex(32))
+
     api_prefix = API_PREFIX
+    auth_routes = [
+        Route("/login", login_page, methods=["GET"]),
+        Route("/login", login, methods=["POST"]),
+        Route("/logout", logout, methods=["GET"]),
+        Route("/me", current_user, methods=["GET"]),
+        Route("/account/password", change_password_handler, methods=["POST"]),
+        Route("/admin/users", admin_users_page, methods=["GET"]),
+        Route("/admin/users", create_user_handler, methods=["POST"]),
+        Route("/admin/users/{user_id:str}/role", update_role_handler, methods=["POST"]),
+        Route("/admin/users/{user_id:str}/permissions", update_permissions_handler, methods=["POST"]),
+        Route("/admin/users/{user_id:str}", delete_user_handler, methods=["DELETE"]),
+    ]
     dashboard_routes = [
         Route("/", dashboard, methods=["GET"]),
+        Route("/favicon.ico", favicon, methods=["GET"]),
         WebSocketRoute("/ws", ws_endpoint),
         Route("/health", health, methods=["GET"]),
         Route("/metrics", metrics, methods=["GET"]),
@@ -165,6 +257,7 @@ def create_app(
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
         storage = await Storage.create(database_url)
         app.state.storage = storage
+        app.state.session_secret = session_secret
         app.state.cleanup_interval = cleanup_interval
         app.state.notification_event = asyncio.Event()
         await storage.listen_for_changes(app.state.notification_event.set)
@@ -211,13 +304,14 @@ def create_app(
             allow_methods=["*"],
             allow_headers=["*"],
         ),
+        Middleware(DashboardAuthMiddleware, session_secret=session_secret),
     ]
     if api_key is not None:
-        middleware.append(Middleware(AuthMiddleware, api_key=api_key))
+        middleware.append(Middleware(AuthMiddleware, api_key=api_key, session_secret=session_secret))
     if rate_limit > 0:
         middleware.append(Middleware(RateLimitMiddleware, max_requests=rate_limit))
 
-    app = Starlette(routes=dashboard_routes + api_routes, lifespan=lifespan, middleware=middleware)
+    app = Starlette(routes=auth_routes + dashboard_routes + api_routes, lifespan=lifespan, middleware=middleware)
     return app
 
 
@@ -457,11 +551,249 @@ async def tasks_html_endpoint(request: Request) -> Response:
 async def dashboard(request: Request) -> HTMLResponse:
     storage: Storage = request.app.state.storage
     stats = await storage.queue_stats()
-    return dashboard_page(stats)
+    tasks = await storage.list_tasks(limit=20)
+    serialized = [_serialize_task(t) for t in tasks]
+    user = getattr(request.state, "current_user", None)
+    session_token = request.cookies.get(SESSION_COOKIE, "")
+    return dashboard_page(stats, tasks=serialized, current_user=user, session_token=session_token)
+
+
+async def login_page(request: Request) -> HTMLResponse:
+    return HTMLResponse(_login_error_html(""))
+
+
+async def login(request: Request) -> HTMLResponse | RedirectResponse:
+    storage: Storage = request.app.state.storage
+    secret = request.app.state.session_secret
+    try:
+        body = await request.form()
+        username = body.get("username", "")
+        password = body.get("password", "")
+    except Exception:
+        return HTMLResponse(_login_error_html("Invalid form data"))
+    user = await storage.authenticate(username, password)
+    if user is None:
+        return HTMLResponse(_login_error_html("Invalid credentials"), status_code=401)
+    token = _make_session_token(secret, user["id"], user["username"], user["role"])
+    resp = RedirectResponse(url="/", status_code=302)
+    resp.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/",
+    )
+    return resp
+
+
+def _login_error_html(error: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lapinq Login</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f3f4f6; color: #1f2937; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+}}
+.login-box {{
+    background: #fff; border-radius: 0.75rem; padding: 2rem; border: 1px solid #e5e7eb;
+    width: 100%; max-width: 360px;
+}}
+.login-box h1 {{ font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }}
+.login-box p {{ font-size: 0.875rem; color: #6b7280; margin-bottom: 1.5rem; }}
+.login-box label {{ font-size: 0.8125rem; font-weight: 500; display: block; margin-bottom: 0.25rem; }}
+.login-box input {{
+    width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem;
+    font-size: 0.875rem; margin-bottom: 1rem; outline: none;
+}}
+.login-box input:focus {{ border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }}
+.login-box button {{
+    width: 100%; padding: 0.625rem; background: #6366f1; color: #fff; border: none;
+    border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+}}
+.login-box button:hover {{ background: #4f46e5; }}
+.login-box .error {{ color: #dc2626; font-size: 0.8125rem; margin-top: 0.75rem; text-align: center; }}
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>Lapinq</h1>
+  <p>Sign in to the dashboard</p>
+  <form method="POST" action="/login">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required>
+    <button type="submit">Sign In</button>
+  </form>
+  <div class="error">{error}</div>
+</div>
+</body>
+</html>"""
+
+
+async def logout(request: Request) -> RedirectResponse:
+    resp = RedirectResponse(url="/login")
+    resp.delete_cookie(SESSION_COOKIE, path="/")
+    return resp
+
+
+async def current_user(request: Request) -> JSONResponse:
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    storage: Storage = request.app.state.storage
+    full = await storage.get_user_by_id(user["id"])
+    return JSONResponse(full or user)
+
+
+async def admin_users_page(request: Request) -> HTMLResponse:
+    user = getattr(request.state, "current_user", None)
+    if not user or user["role"] != "admin":
+        return HTMLResponse("Forbidden", status_code=403)
+    storage: Storage = request.app.state.storage
+    users = await storage.list_users()
+    queues_data = await storage.queue_stats()
+    queues = sorted({s["queue_name"] for s in queues_data})
+    return _render_admin_users(users, queues)
+
+
+async def create_user_handler(request: Request) -> JSONResponse:
+    user = getattr(request.state, "current_user", None)
+    if not user or user["role"] != "admin":
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    storage: Storage = request.app.state.storage
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+    role = body.get("role", "user")
+    if not username or not password:
+        return JSONResponse({"error": "username and password required"}, status_code=400)
+    if role not in ("admin", "user"):
+        return JSONResponse({"error": "role must be admin or user"}, status_code=400)
+    try:
+        created = await storage.create_user(username, password, role)
+        return JSONResponse(created, status_code=201)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+async def update_role_handler(request: Request) -> JSONResponse:
+    user = getattr(request.state, "current_user", None)
+    if not user or user["role"] != "admin":
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    storage: Storage = request.app.state.storage
+    target_id = request.path_params.get("user_id", "")
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    new_role = body.get("role", "")
+    if new_role not in ("admin", "user"):
+        return JSONResponse({"error": "role must be admin or user"}, status_code=400)
+    ok = await storage.update_role(target_id, new_role)
+    if not ok:
+        return JSONResponse({"error": "user not found"}, status_code=404)
+    return JSONResponse({"status": "ok"})
+
+
+async def update_permissions_handler(request: Request) -> JSONResponse:
+    user = getattr(request.state, "current_user", None)
+    if not user or user["role"] != "admin":
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    storage: Storage = request.app.state.storage
+    target_id = request.path_params.get("user_id", "")
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    ok = await storage.update_permissions(target_id, body)
+    if not ok:
+        return JSONResponse({"error": "user not found"}, status_code=404)
+    return JSONResponse({"status": "ok"})
+
+
+async def delete_user_handler(request: Request) -> JSONResponse:
+    user = getattr(request.state, "current_user", None)
+    if not user or user["role"] != "admin":
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    storage: Storage = request.app.state.storage
+    target_id = request.path_params.get("user_id", "")
+    ok = await storage.delete_user(target_id)
+    if not ok:
+        return JSONResponse({"error": "user not found"}, status_code=404)
+    return JSONResponse({"status": "ok"})
+
+
+async def change_password_handler(request: Request) -> JSONResponse:
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    storage: Storage = request.app.state.storage
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    current_pw = body.get("current_password", "")
+    new_pw = body.get("new_password", "")
+    if not current_pw or not new_pw:
+        return JSONResponse({"error": "current_password and new_password required"}, status_code=400)
+    auth = await storage.authenticate(user["username"], current_pw)
+    if not auth:
+        return JSONResponse({"error": "current password is incorrect"}, status_code=403)
+    if len(new_pw) < 4:
+        return JSONResponse({"error": "new password must be at least 4 characters"}, status_code=400)
+    ok = await storage.update_password(user["id"], new_pw)
+    if not ok:
+        return JSONResponse({"error": "failed to update password"}, status_code=500)
+    return JSONResponse({"status": "ok"})
 
 
 async def ws_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    secret = websocket.app.state.session_secret
+    current_ws_user: dict[str, Any] | None = None
+    auth_done = False
+
+    async def _require_auth() -> bool:
+        nonlocal auth_done, current_ws_user
+        if auth_done:
+            return True
+        try:
+            msg = await asyncio.wait_for(websocket.receive_json(), timeout=10)
+        except (asyncio.TimeoutError, WebSocketDisconnect):
+            await websocket.close(4001)
+            return False
+        if not isinstance(msg, dict) or msg.get("type") != "auth":
+            await websocket.close(4001)
+            return False
+        token = msg.get("token", "")
+        session = _verify_session_token(secret, token) if token else None
+        if session is None:
+            await websocket.close(4001)
+            return False
+        current_ws_user = {
+            "id": session["uid"],
+            "username": session["un"],
+            "role": session["role"],
+        }
+        auth_done = True
+        return True
+
+    if not await _require_auth():
+        return
+
     storage: Storage = websocket.app.state.storage
     queue_filter: str | None = None
     id_filter: str | None = None
@@ -513,6 +845,8 @@ async def ws_endpoint(websocket: WebSocket) -> None:
             if cards != last_cards or table != last_table or changed:
                 last_cards, last_table, changed = cards, table, False
                 payload: dict[str, Any] = {"cards": cards, "table": table}
+                if current_ws_user:
+                    payload["user"] = {"role": current_ws_user["role"], "username": current_ws_user["username"]}
                 ci = getattr(websocket.app.state, "cleanup_interval", 0)
                 if ci:
                     payload["cleanup_interval"] = ci
@@ -576,6 +910,13 @@ async def ws_endpoint(websocket: WebSocket) -> None:
             await _send()
     except WebSocketDisconnect:
         pass
+
+
+FAVICON_PATH = os.path.join(os.path.dirname(__file__), "favicon.ico")
+
+
+async def favicon(request: Request) -> FileResponse:
+    return FileResponse(FAVICON_PATH, media_type="image/x-icon")
 
 
 async def health(request: Request) -> JSONResponse:

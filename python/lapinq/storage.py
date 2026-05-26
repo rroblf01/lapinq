@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import json
 import logging
 import os
+import secrets
 import uuid
 from typing import Any
 
@@ -13,6 +18,8 @@ logger = logging.getLogger("lapinq.storage")
 RETRY_BACKOFF_SECONDS = (10, 30, 60, 300, 600)
 
 DB_TIMEOUT = float(os.environ.get("LAPINQ_DB_TIMEOUT", "30"))
+
+PBKDF2_ITERATIONS = 600_000
 
 SQL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS lapinq_tasks (
@@ -49,6 +56,18 @@ CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
     WHERE status = 'pending';
 """
 
+USERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS lapinq_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user'
+        CHECK (role IN ('admin', 'user')),
+    permissions JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"""
 MIGRATIONS: list[str] = [
     """
     ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS ttl_seconds DOUBLE PRECISION;
@@ -73,7 +92,9 @@ MIGRATIONS: list[str] = [
     ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS retry_backoff BOOLEAN DEFAULT TRUE;
     ALTER TABLE lapinq_tasks ADD COLUMN IF NOT EXISTS webhook_url TEXT;
     """,
+    USERS_SCHEMA,
 ]
+
 
 NOTIFY_SQL = """
 CREATE OR REPLACE FUNCTION notify_lapinq_change()
@@ -116,7 +137,9 @@ class Storage:
                     await conn.execute(SQL_SCHEMA)
                     await conn.execute(NOTIFY_SQL)
                     await _apply_migrations(conn)
-                return cls(pool, database_url=database_url)
+                store = cls(pool, database_url=database_url)
+                await store.ensure_default_admin()
+                return store
             except Exception as e:
                 last_error = e
                 if pool is not None:
@@ -158,6 +181,132 @@ class Storage:
     async def close(self) -> None:
         await self.stop_listening()
         await self.pool.close()
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _hash_password(password: str) -> str:
+        salt = secrets.token_hex(16)
+        h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), PBKDF2_ITERATIONS)
+        return f"pbkdf2:sha256:{PBKDF2_ITERATIONS}:{salt}:{base64.b64encode(h).decode()}"
+
+    @staticmethod
+    def _verify_password(password: str, stored: str) -> bool:
+        try:
+            parts = stored.split(":")
+            if len(parts) != 5 or parts[0] != "pbkdf2" or parts[1] != "sha256":
+                return False
+            iterations = int(parts[2])
+            salt = parts[3]
+            expected = base64.b64decode(parts[4])
+            h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations)
+            return hmac.compare_digest(h, expected)
+        except (ValueError, IndexError, base64.binascii.Error):
+            return False
+
+    async def ensure_default_admin(self) -> None:
+        async with self.pool.acquire() as conn:
+            exists = await conn.fetchval("SELECT 1 FROM lapinq_users LIMIT 1")
+            if not exists:
+                pw = self._hash_password("lapinq")
+                await conn.execute(
+                    "INSERT INTO lapinq_users (username, password_hash, role) VALUES ($1, $2, 'admin')",
+                    "lapinq", pw,
+                )
+                logger.info("Created default admin user 'lapinq'")
+
+    async def authenticate(self, username: str, password: str) -> dict[str, Any] | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, username, password_hash, role, permissions FROM lapinq_users WHERE username = $1",
+                username,
+            )
+            if row is None:
+                return None
+            if not self._verify_password(password, row["password_hash"]):
+                return None
+            return {
+                "id": str(row["id"]),
+                "username": row["username"],
+                "role": row["role"],
+                "permissions": row["permissions"] if isinstance(row["permissions"], dict) else {},
+            }
+
+    async def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, username, role, permissions, created_at FROM lapinq_users WHERE id = $1::uuid",
+                user_id,
+            )
+            if row is None:
+                return None
+            return {
+                "id": str(row["id"]),
+                "username": row["username"],
+                "role": row["role"],
+                "permissions": row["permissions"] if isinstance(row["permissions"], dict) else {},
+                "created_at": row["created_at"].isoformat(),
+            }
+
+    async def create_user(self, username: str, password: str, role: str = "user") -> dict[str, Any]:
+        pw = self._hash_password(password)
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO lapinq_users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at",
+                username, pw, role,
+            )
+            return {
+                "id": str(row["id"]),
+                "username": row["username"],
+                "role": row["role"],
+                "created_at": row["created_at"].isoformat(),
+            }
+
+    async def list_users(self) -> list[dict[str, Any]]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, username, role, permissions, created_at FROM lapinq_users ORDER BY created_at"
+            )
+            return [
+                {
+                    "id": str(r["id"]),
+                    "username": r["username"],
+                    "role": r["role"],
+                    "permissions": r["permissions"] if isinstance(r["permissions"], dict) else {},
+                    "created_at": r["created_at"].isoformat(),
+                }
+                for r in rows
+            ]
+
+    async def update_password(self, user_id: str, new_password: str) -> bool:
+        pw = self._hash_password(new_password)
+        async with self.pool.acquire() as conn:
+            r = await conn.execute(
+                "UPDATE lapinq_users SET password_hash = $1, updated_at = now() WHERE id = $2::uuid",
+                pw, user_id,
+            )
+            return r != "UPDATE 0"
+
+    async def update_role(self, user_id: str, new_role: str) -> bool:
+        async with self.pool.acquire() as conn:
+            r = await conn.execute(
+                "UPDATE lapinq_users SET role = $1, updated_at = now() WHERE id = $2::uuid",
+                new_role, user_id,
+            )
+            return r != "UPDATE 0"
+
+    async def update_permissions(self, user_id: str, permissions: dict[str, Any]) -> bool:
+        async with self.pool.acquire() as conn:
+            r = await conn.execute(
+                "UPDATE lapinq_users SET permissions = $1::jsonb, updated_at = now() WHERE id = $2::uuid",
+                json.dumps(permissions), user_id,
+            )
+            return r != "UPDATE 0"
+
+    async def delete_user(self, user_id: str) -> bool:
+        async with self.pool.acquire() as conn:
+            r = await conn.execute("DELETE FROM lapinq_users WHERE id = $1::uuid", user_id)
+            return r != "DELETE 0"
 
     async def enqueue(
         self,

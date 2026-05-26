@@ -122,7 +122,7 @@ curl -X POST http://localhost:8001/api/v1/enqueue \
 ### Listar tareas
 
 ```bash
-curl "http://localhost:8001/api/v1/tasks?limit=10&status=pending&queue=default"
+curl "http://localhost:8001/api/v1/tasks?limit=10&status=pending&queue=default&task_name=procesar"
 ```
 
 ### Estadísticas de colas
@@ -148,6 +148,14 @@ curl -X DELETE http://localhost:8001/api/v1/tasks/<task_id>
 ```bash
 curl -X POST http://localhost:8001/api/v1/tasks/<task_id>/requeue
 ```
+
+### Eliminar tareas en lote por filtro
+
+```bash
+curl -X DELETE "http://localhost:8001/api/v1/tasks?status=failed&queue=default"
+```
+
+Soporta todos los parámetros de filtro: `queue`, `status`, `task_name`, `args`, `result`, `error`.
 
 ### Listar tareas fallidas (DLQ)
 
@@ -215,13 +223,18 @@ VALUES
 
 ## Dashboard
 
-Abre [http://localhost:8001](http://localhost:8001) en tu navegador.
+Abre [http://localhost:8001](http://localhost:8001) en tu navegador. Inicia sesión con la cuenta admin por defecto (`lapinq`/`lapinq`).
 
 Características:
+- **Autenticación por sesión**: El dashboard requiere inicio de sesión. Botón de cerrar sesión en el encabezado.
 - **Actualizaciones en tiempo real**: Conexión WebSocket que envía cambios al instante (respaldado por `LISTEN`/`NOTIFY` de PostgreSQL)
 - **Tarjetas de cola**: Conteos de activas/pendientes/completadas/fallidas por cola
 - **Tabla de tareas**: ID, nombre, cola, args, resultado, error, estado y TTL restante
-- **Filtros**: Cola, estado, ID de tarea, contenido de args, resultado y error
+- **Filtros**: Cola, estado, nombre de tarea, ID, args, resultado y error
+- **Cancelar/Reencolar**: Los admins pueden cancelar tareas pendientes o reencolar fallidas
+- **Eliminar filtradas**: Los admins pueden eliminar en lote las tareas que coincidan con los filtros actuales
+- **Cambiar contraseña**: Cualquier usuario autenticado puede cambiar su propia contraseña
+- **Gestión de usuarios** (solo admin): Crear usuarios, cambiar roles, establecer permisos por cola
 - **Display TTL**: Muestra tiempo restante antes de autoeliminación o `∞` para tareas permanentes
 
 ## Limpieza TTL

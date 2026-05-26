@@ -126,7 +126,7 @@ curl -X POST http://localhost:8001/api/v1/enqueue \
 ### List tasks
 
 ```bash
-curl "http://localhost:8001/api/v1/tasks?limit=10&status=pending&queue=default"
+curl "http://localhost:8001/api/v1/tasks?limit=10&status=pending&queue=default&task_name=process"
 ```
 
 ### Get task stats
@@ -152,6 +152,14 @@ curl -X DELETE http://localhost:8001/api/v1/tasks/<task_id>
 ```bash
 curl -X POST http://localhost:8001/api/v1/tasks/<task_id>/requeue
 ```
+
+### Bulk-delete tasks by filter
+
+```bash
+curl -X DELETE "http://localhost:8001/api/v1/tasks?status=failed&queue=default"
+```
+
+Supports all filter params: `queue`, `status`, `task_name`, `args`, `result`, `error`.
 
 ### List failed tasks (DLQ)
 
@@ -219,13 +227,18 @@ VALUES
 
 ## Dashboard
 
-Open [http://localhost:8001](http://localhost:8001) in your browser.
+Open [http://localhost:8001](http://localhost:8001) in your browser. Login with the default admin account (`lapinq`/`lapinq`).
 
 Features:
+- **Session-based auth**: Dashboard requires login. Logout button in the header.
 - **Real-time updates**: WebSocket connection pushes changes instantly (backed by PostgreSQL `LISTEN`/`NOTIFY`)
 - **Queue cards**: Active/pending/completed/failed counts per queue
 - **Task table**: ID, task name, queue, args, result, error, status, and TTL remaining
-- **Filters**: Queue, status, task ID, args content, result content, error content
+- **Filters**: Queue, status, task name, task ID, args content, result content, error content
+- **Cancel/Requeue**: Admins can cancel pending tasks or requeue failed tasks inline
+- **Delete filtered**: Admins can bulk-delete tasks matching current filters
+- **Change password**: Any authenticated user can change their own password
+- **User management** (admin only): Create users, change roles, set per-queue permissions
 - **TTL display**: Shows remaining time before auto-deletion or `∞` for permanent tasks
 
 ## TTL Cleanup

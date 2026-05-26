@@ -1,13 +1,14 @@
 # Referencia de la API del Servidor
 
-## `create_app(database_url, api_key, rate_limit, worker, ...)`
+## `create_app(database_url, api_key, session_secret, rate_limit, worker, ...)`
 
 Crea una aplicación Starlette ASGI con la API REST, dashboard y worker inline opcional.
 
 | Parámetro | Tipo | Por defecto | Descripción |
 |-----------|------|-------------|-------------|
 | `database_url` | `str` | `"postgresql://localhost:5432/lapinq"` | URL de conexión PostgreSQL |
-| `api_key` | `str \| None` | `None` | API key para el middleware de autenticación |
+| `api_key` | `str \| None` | `None` | API key para el middleware de la API |
+| `session_secret` | `str \| None` | `None` | Secreto para cookies de sesión del dashboard (auto-generado si vacío) |
 | `rate_limit` | `int` | `0` | Máx. peticiones/min por IP (`0` = desactivado) |
 | `worker` | `bool` | `False` | Ejecutar worker inline en el mismo proceso |
 | `worker_concurrency` | `int` | `4` | Concurrencia del worker inline |
@@ -136,7 +137,27 @@ Listar tareas.
 |-----------------|-------------|-------------|
 | `queue` | — | Filtrar por nombre de cola |
 | `status` | — | Filtrar por estado (`pending`, `running`, `completed`, `failed`, `cancelled`, `expired`) |
+| `task_name` | — | Filtrar por nombre de tarea (ILIKE) |
 | `limit` | `50` | Máx. resultados |
+
+### `DELETE /api/v1/tasks`
+
+Eliminar tareas en lote según filtros. Requiere sesión admin o `X-API-Key`.
+
+| Parámetro query | Descripción |
+|-----------------|-------------|
+| `queue` | Filtrar por nombre de cola |
+| `status` | Filtrar por estado |
+| `task_name` | Filtrar por nombre de tarea (ILIKE) |
+| `args` | Filtrar por contenido de args (ILIKE) |
+| `result` | Filtrar por contenido de resultado (ILIKE) |
+| `error` | Filtrar por contenido de error (ILIKE) |
+
+**Respuesta:** `200 OK`
+
+```json
+{"deleted": 5}
+```
 
 ### `GET /api/v1/tasks/failed`
 
@@ -182,13 +203,75 @@ lapinq_tasks{queue="default",status="completed"} 100
 lapinq_tasks{queue="default",status="failed"} 1
 ```
 
+### `GET /login` — Página de Login
+
+Formulario HTML de inicio de sesión. Muestra "Invalid credentials" si falla. Redirige al dashboard al iniciar sesión correctamente.
+
+### `POST /login`
+
+Login basado en formulario. Acepta `username` y `password`. Establece una cookie de sesión si las credenciales son correctas.
+
+### `GET /logout`
+
+Elimina la cookie de sesión y redirige a `/login`.
+
 ### `GET /` — Dashboard
 
-Dashboard HTML con actualizaciones en tiempo real vía WebSocket en `/ws`.
+Dashboard HTML con autenticación por sesión y actualizaciones en tiempo real vía WebSocket en `/ws`. El primer usuario se crea automáticamente como `lapinq`/`lapinq` con rol admin.
+
+### `GET /admin/users` — Gestión de Usuarios (solo admin)
+
+Página HTML para crear, editar roles, editar permisos y eliminar usuarios.
+
+### `POST /admin/users`
+
+Crear un nuevo usuario (solo admin). Acepta JSON:
+
+```json
+{"username": "nuevo", "password": "secreta", "role": "user"}
+```
+
+### `POST /admin/users/{id}/role`
+
+Cambiar el rol de un usuario (solo admin). Acepta JSON:
+
+```json
+{"role": "admin"}
+```
+
+### `POST /admin/users/{id}/permissions`
+
+Establecer permisos por cola (solo admin). Acepta JSON:
+
+```json
+{"queues": {"video": ["delete", "cancel"]}}
+```
+
+### `DELETE /admin/users/{id}`
+
+Eliminar un usuario (solo admin).
+
+### `POST /account/password`
+
+Cambiar la propia contraseña. Acepta JSON:
+
+```json
+{"current_password": "anterior", "new_password": "nueva"}
+```
+
+### `GET /me`
+
+Devuelve la información del usuario actual (id, username, role, permissions).
 
 ### `WebSocket /ws`
 
-Datos del dashboard en tiempo real. El servidor envía JSON con fragmentos HTML `cards` y `table` cada 2 segundos o inmediatamente cuando las tareas cambian (vía `LISTEN`/`NOTIFY` de PostgreSQL).
+Datos del dashboard en tiempo real. **El primer mensaje debe ser de autenticación:**
+
+```json
+{"type": "auth", "token": "<session-token>"}
+```
+
+Después de la autenticación, el servidor envía JSON con fragmentos HTML `cards` y `table` cada 2 segundos o inmediatamente cuando las tareas cambian (vía `LISTEN`/`NOTIFY` de PostgreSQL). La respuesta también incluye un objeto `user` con `role` y `username`.
 
 **Mensajes de filtro Cliente → Servidor:**
 
@@ -196,6 +279,7 @@ Datos del dashboard en tiempo real. El servidor envía JSON con fragmentos HTML 
 {"queue": "video"}
 {"id": "3cd39f6d..."}
 {"status": "failed"}
+{"task_name": "procesar"}
 {"args": "palabra"}
 {"result": "exitoso"}
 {"error": "timeout"}
@@ -203,9 +287,13 @@ Datos del dashboard en tiempo real. El servidor envía JSON con fragmentos HTML 
 
 ## Middleware
 
+### DashboardAuthMiddleware
+
+Se aplica automáticamente a todas las rutas del dashboard. Verifica la cookie `lapinq_session` en cada petición. Si es inválida o falta para rutas protegidas (`/`, `/ws`, `/admin/*`, `/account/*`), redirige a `/login`. Las rutas `/login`, `/health` y `/metrics` son siempre públicas.
+
 ### AuthMiddleware
 
-Configura la variable de entorno `LAPINQ_API_KEY` o pasa `api_key` a `create_app()`. Todas las rutas `/api/*` requieren la cabecera `X-API-Key` (excepto `OPTIONS`). El dashboard y health check son públicos.
+Configura `LAPINQ_API_KEY` o pasa `api_key` a `create_app()`. Todas las rutas `/api/*` requieren la cabecera `X-API-Key` (excepto `OPTIONS`) o una cookie de sesión válida del dashboard. Esto permite que el JavaScript del dashboard llame a los endpoints de la API sin problemas.
 
 ### RateLimitMiddleware
 
@@ -221,4 +309,10 @@ python -m lapinq server \
   --worker \
   --worker-concurrency 4 \
   --cleanup-interval 300
+```
+
+El secreto de sesión se lee de la variable de entorno `LAPINQ_SESSION_SECRET`. Si no se establece, se genera un secreto aleatorio en cada inicio (invalida todas las sesiones existentes al reiniciar). Establece un valor fijo en producción:
+
+```bash
+LAPINQ_SESSION_SECRET=tu-clave-secreta python -m lapinq server
 ```

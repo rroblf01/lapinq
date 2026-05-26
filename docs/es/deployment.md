@@ -125,13 +125,38 @@ lapinq-worker --database-url $DATABASE_URL --concurrency 4
 
 ### Autenticación y Rate Limiting
 
-```bash
-# Activar autenticación por API key
-LAPINQ_API_KEY=mi-clave-secreta python -m lapinq server
+#### API Key (acceso programático)
 
-# Activar rate limiting (60 peticiones/min por IP)
+```bash
+LAPINQ_API_KEY=mi-clave-secreta python -m lapinq server
+```
+
+Todas las rutas `/api/*` requieren la cabecera `X-API-Key`.
+
+#### Autenticación del Dashboard
+
+El dashboard usa autenticación por sesión. Un usuario admin por defecto `lapinq`/`lapinq` se crea automáticamente en el primer inicio.
+
+Establece un secreto de sesión fijo para mantener las sesiones activas tras reinicios:
+
+```bash
+LAPINQ_SESSION_SECRET=tu-clave-secreta python -m lapinq server
+```
+
+Sin esto, se genera un secreto aleatorio en cada inicio, invalidando todas las sesiones activas.
+
+#### Roles de Usuario
+
+- **Admin**: Acceso completo — ver dashboard, eliminar tareas, cancelar/reencolar, crear usuarios, gestionar permisos.
+- **User**: Solo lectura por defecto — puede ver el dashboard y cambiar su propia contraseña. Los admins pueden conceder permisos por cola (delete, cancel) según sea necesario.
+
+#### Rate Limiting
+
+```bash
 LAPINQ_RATE_LIMIT=60 python -m lapinq server
 ```
+
+Limita peticiones por IP por minuto en rutas `/api/*`.
 
 ### Monitoreo
 
