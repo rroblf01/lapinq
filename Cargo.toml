@@ -30,4 +30,4 @@ chrono = { version = "0.4", features = ["serde"] }
 deadpool-postgres = { version = "0.14", features = ["serde"] }
 log = "0.4"
 env_logger = "0.11"
-pyo3 = { version = "0.28", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
